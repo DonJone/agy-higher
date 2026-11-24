@@ -68,11 +68,16 @@ private enum SnapshotRenderer {
             to: "\(outDir)/v5-05-account-popover-dark.png"
         )
 
-        // 6. Accounts & Settings Tab (Dark, 2 accounts)
+        // 6. Settings — Accounts Pane (Dark, 2-Pane Linear Architecture)
         store.activeTab = .accounts
+        store.activeSettingsSection = .accounts
         render(view: RootShellView(store: store).preferredColorScheme(.dark), size: size, to: "\(outDir)/v5-06-accounts-settings-dark.png")
 
-        // 7. Menu Bar Popover (Dark)
+        // 7. Settings — L10n Pane (Dark, above the fold)
+        store.activeSettingsSection = .l10n
+        render(view: RootShellView(store: store).preferredColorScheme(.dark), size: size, to: "\(outDir)/v6-08-settings-l10n-dark.png")
+
+        // 8. Menu Bar Popover (Dark)
         render(
             view: MenuBarPopoverView(store: store, onOpenMainWindowOverride: {}).preferredColorScheme(.dark),
             size: CGSize(width: 300, height: 390),
@@ -265,7 +270,7 @@ struct AgyHigherApp: App {
     @StateObject private var store = AppStore()
 
     var body: some Scene {
-        WindowGroup("Antigravity — agy-higher", id: "main-dashboard") {
+        WindowGroup(STCopy.windowTitle, id: "main-dashboard") {
             RootShellView(store: store)
                 .frame(minWidth: 980, idealWidth: 1320, minHeight: 640, idealHeight: 820)
                 .preferredColorScheme(store.theme.preferredColorScheme)
@@ -276,25 +281,25 @@ struct AgyHigherApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appInfo) {
-                Button("检查更新...") {
-                    store.activeTab = .accounts
+                Button(STCopy.Action.checkUpdatesMenu) {
+                    store.openSettings(.updates)
                     Task {
                         await AppUpdateManager.shared.checkForUpdates(manual: true)
                     }
                 }
             }
             CommandGroup(after: .toolbar) {
-                Button("刷新会话") {
+                Button(STCopy.Action.refreshSessions) {
                     store.refresh(showFeedback: true)
                 }
                 .keyboardShortcut("r", modifiers: .command)
 
-                Button("刷新额度") {
+                Button(STCopy.Action.refreshQuota) {
                     store.refreshLiveQuotaAsync(silent: false)
                 }
                 .keyboardShortcut("u", modifiers: [.command, .shift])
 
-                Button("切换深浅主题") {
+                Button(STCopy.Action.toggleTheme) {
                     store.toggleTheme()
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])

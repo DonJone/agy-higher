@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Full-bleed 44px Linear/Cursor top navigation bar.
-/// Right-side account trigger opens the multi-account comparison Popover on demand.
+/// Full-bleed 44px STE-STC top navigation bar.
+/// Canonical navigation: `会话` / `设置`, right-side account popover trigger + theme toggle.
 struct TopBarView: View {
     @ObservedObject var store: AppStore
 
@@ -14,7 +14,7 @@ struct TopBarView: View {
                 AntigravityMark()
                     .fill(theme.inkPrimary, style: FillStyle(eoFill: true))
                     .frame(width: 13.5, height: 13.5)
-                Text("Antigravity")
+                Text(STCopy.appName)
                     .font(.system(size: 13, weight: .semibold))
                     .tracking(-0.2)
                     .foregroundStyle(theme.inkPrimary)
@@ -26,7 +26,7 @@ struct TopBarView: View {
 
             HStack(spacing: 2) {
                 NavTabItem(
-                    title: "会话",
+                    title: STCopy.Nav.sessions,
                     isActive: store.activeTab == .dashboard,
                     theme: theme
                 ) {
@@ -34,7 +34,7 @@ struct TopBarView: View {
                 }
 
                 NavTabItem(
-                    title: "账户与设置",
+                    title: STCopy.Nav.settings,
                     isActive: store.activeTab == .accounts,
                     theme: theme
                 ) {
@@ -45,9 +45,8 @@ struct TopBarView: View {
             Spacer()
 
             HStack(spacing: 8) {
-                // Account dropdown trigger -> opens multi-account comparison Popover
                 AccountPopoverTrigger(
-                    email: activeEmail.isEmpty ? (store.isSyncingQuota ? "同步中..." : "未登录") : activeEmail,
+                    email: activeEmail.isEmpty ? (store.isSyncingQuota ? STCopy.State.syncing : STCopy.State.notSignedIn) : activeEmail,
                     weeklyPct: store.weeklyBucket?.remainingPct,
                     fiveHourPct: store.fiveHourBucket?.remainingPct,
                     isActive: !activeEmail.isEmpty,
@@ -71,7 +70,7 @@ struct TopBarView: View {
     }
 }
 
-/// Multi-account comparison Popover tucked cleanly under the top-right account menu.
+/// Compact multi-account comparison Popover under the top-right account trigger.
 struct AccountDropdownPopoverView: View {
     @ObservedObject var store: AppStore
 
@@ -81,7 +80,7 @@ struct AccountDropdownPopoverView: View {
 
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center) {
-                Text("账户额度对比")
+                Text(STCopy.Accounts.popoverTitle)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.inkPrimary)
                 Text("\(accounts.count)")
@@ -89,7 +88,7 @@ struct AccountDropdownPopoverView: View {
                     .foregroundStyle(theme.inkMuted)
                 Spacer()
                 if let model = store.snapshot?.quota.activeModelLabel, !model.isEmpty {
-                    Text(shortModel(model))
+                    Text(STCopy.shortModel(model))
                         .font(.system(size: 11))
                         .foregroundStyle(theme.inkMuted)
                         .lineLimit(1)
@@ -101,7 +100,7 @@ struct AccountDropdownPopoverView: View {
             HairlineDivider(theme: theme, axis: .horizontal)
 
             if accounts.isEmpty {
-                Text("暂无已验证账户")
+                Text(STCopy.Accounts.empty)
                     .font(.system(size: 12))
                     .foregroundStyle(theme.inkMuted)
                     .padding(.horizontal, 14)
@@ -164,7 +163,7 @@ struct AccountDropdownPopoverView: View {
 
             HStack(spacing: 8) {
                 ToolButton(
-                    title: store.isSyncingQuota ? "同步中..." : "刷新额度",
+                    title: store.isSyncingQuota ? STCopy.State.syncing : STCopy.Action.refreshQuota,
                     theme: theme,
                     style: .secondary,
                     isDisabled: store.isSyncingQuota
@@ -175,12 +174,12 @@ struct AccountDropdownPopoverView: View {
                 Spacer()
 
                 ToolButton(
-                    title: "账户与设置",
+                    title: STCopy.Nav.settings,
                     theme: theme,
                     style: .ghost
                 ) {
                     store.isAccountPopoverPresented = false
-                    store.activeTab = .accounts
+                    store.openSettings(.accounts)
                 }
             }
             .padding(.horizontal, 12)
@@ -189,12 +188,6 @@ struct AccountDropdownPopoverView: View {
         .frame(width: 310)
         .background(theme.bgElevated)
         .preferredColorScheme(theme.preferredColorScheme)
-    }
-
-    private func shortModel(_ raw: String) -> String {
-        raw.replacingOccurrences(of: "Gemini ", with: "G")
-            .replacingOccurrences(of: " (XHigh)", with: " XH")
-            .replacingOccurrences(of: " (High)", with: " H")
     }
 }
 
@@ -283,7 +276,7 @@ private struct AccountPopoverTrigger: View {
         }
         .buttonStyle(.plain)
         .onHover { hover.isHovered = $0 }
-        .help("账户额度对比")
+        .help(STCopy.Accounts.popoverTitle)
     }
 }
 
@@ -311,6 +304,6 @@ private struct ThemeToggleButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hover.isHovered = $0 }
-        .help("切换深浅主题")
+        .help(STCopy.Action.toggleTheme)
     }
 }

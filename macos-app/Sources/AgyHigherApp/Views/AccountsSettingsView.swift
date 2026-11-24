@@ -1,450 +1,224 @@
 import SwiftUI
 
-/// Full-bleed Linear / Raycast style Accounts & Preferences screen.
-/// Quiet carbon gray (#161618), whisper dividers, restrained alerts only (<15% crimson / <30% amber).
+/// STE-STC Two-Pane Settings Workspace (Linear / Raycast architecture):
+/// - Left 200px Domain Rail (#101012): 账户 / 显示 / 中文拓展 / 更新
+/// - Right Focused Canvas (#161618): Single active domain above the fold, zero scroll walls, zero prose clutter.
 struct AccountsSettingsView: View {
     @ObservedObject var store: AppStore
     @ObservedObject private var updater = AppUpdateManager.shared
 
     var body: some View {
         let theme = store.theme
-        let accounts = store.snapshot?.accounts ?? []
 
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                // Section 1: Accounts
+        HStack(spacing: 0) {
+            SettingsDomainRail(store: store, updater: updater, theme: theme)
+            HairlineDivider(theme: theme, axis: .vertical)
+
+            ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .center, spacing: 10) {
-                        Text("已登录账户")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(theme.inkPrimary)
-
-                        Text("\(accounts.count)")
-                            .font(.system(size: 12.5).monospacedDigit())
-                            .foregroundStyle(theme.inkMuted)
-
-                        Spacer()
-
-                        if store.inactiveAccountCount > 0 {
-                            ToolButton(
-                                title: "清空历史缓存",
-                                theme: theme,
-                                style: .danger
-                            ) {
-                                store.runAccountAction("clear_inactive")
-                            }
-                        }
-
-                        ToolButton(
-                            title: store.isSyncingQuota ? "同步中..." : "刷新账户与额度",
-                            theme: theme,
-                            style: .primary,
-                            isDisabled: store.isSyncingQuota
-                        ) {
-                            store.refreshLiveQuotaAsync(silent: false)
-                        }
-                    }
-                    .padding(.bottom, 16)
-
-                    HairlineDivider(theme: theme, axis: .horizontal)
-
-                    if accounts.isEmpty {
-                        Text("暂无已验证账户")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(theme.inkMuted)
-                            .padding(.vertical, 24)
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(Array(accounts.enumerated()), id: \.element.id) { idx, acc in
-                                if idx > 0 {
-                                    HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
-                                }
-                                FlatAccountRow(
-                                    account: acc,
-                                    hideNonGemini: store.hideNonGeminiModels,
-                                    theme: theme,
-                                    onRemoveCache: {
-                                        store.runAccountAction("remove_cached", email: acc.email)
-                                    }
-                                )
-                            }
-                        }
+                    switch store.activeSettingsSection {
+                    case .accounts:
+                        AccountsDomainPane(store: store, theme: theme)
+                    case .display:
+                        DisplayDomainPane(store: store, theme: theme)
+                    case .l10n:
+                        L10nDomainPane(store: store, theme: theme)
+                    case .updates:
+                        UpdatesDomainPane(updater: updater, theme: theme)
                     }
                 }
-                .padding(.bottom, 28)
-
-                HairlineDivider(theme: theme, axis: .horizontal)
-                    .padding(.bottom, 24)
-
-                // Section 2: Preferences (Compact Inspector Rows)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("面板设置")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.inkPrimary)
-                        .padding(.bottom, 14)
-
-                    HairlineDivider(theme: theme, axis: .horizontal)
-
-                    FlatSettingRow(
-                        title: "屏蔽非 Gemini 模型",
-                        detail: "隐藏 Claude / GPT 额度分组",
-                        theme: theme
-                    ) {
-                        ToolSwitch(isOn: store.hideNonGeminiModels, theme: theme) {
-                            store.updatePreferences(hideNonGeminiModels: !store.hideNonGeminiModels)
-                        }
-                    }
-
-                    HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
-
-                    FlatSettingRow(
-                        title: "顶部菜单栏显示额度",
-                        detail: "常驻 Gemini 周剩余-5h 百分比",
-                        theme: theme
-                    ) {
-                        ToolSwitch(isOn: store.showMenuBarQuota, theme: theme) {
-                            store.updatePreferences(showMenuBarQuota: !store.showMenuBarQuota)
-                        }
-                    }
-
-                    HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
-
-                    FlatSettingRow(
-                        title: "显示归档历史会话",
-                        detail: "兼容 Antigravity v2.35 无限历史与归档标注",
-                        theme: theme
-                    ) {
-                        ToolSwitch(isOn: store.showArchivedSessions, theme: theme) {
-                            store.updatePreferences(showArchivedSessions: !store.showArchivedSessions)
-                        }
-                    }
-
-                    HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
-
-                    FlatSettingRow(
-                        title: "主题",
-                        detail: "深色 / 浅色",
-                        theme: theme
-                    ) {
-                        HStack(spacing: 2) {
-                            SegmentOption(
-                                title: "深色",
-                                isActive: store.themeMode == .dark,
-                                theme: theme
-                            ) {
-                                store.setThemeMode(.dark)
-                            }
-                            SegmentOption(
-                                title: "浅色",
-                                isActive: store.themeMode == .light,
-                                theme: theme
-                            ) {
-                                store.setThemeMode(.light)
-                            }
-                        }
-                        .padding(2)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(theme.bgSidebar)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(theme.borderControl, lineWidth: 1)
-                        )
-                    }
-
-                    HairlineDivider(theme: theme, axis: .horizontal)
-                }
-                .padding(.bottom, 28)
-
-                // Section 3: Chinese Localization Extension (STE-STC, Agent-Maintainable)
-                VStack(alignment: .leading, spacing: 0) {
-                    let l10n = store.l10nStatus
-
-                    HStack(alignment: .center, spacing: 10) {
-                        Text("中文拓展")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(theme.inkPrimary)
-
-                        Text(l10n?.standard ?? "STE-STC")
-                            .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                            .foregroundStyle(theme.inkMuted)
-
-                        if let l10n {
-                            Text("·").foregroundStyle(theme.inkSubtle)
-                            Text("Antigravity \(l10n.antigravityVersion)")
-                                .font(.system(size: 12).monospacedDigit())
-                                .foregroundStyle(theme.inkMuted)
-                            Text("·").foregroundStyle(theme.inkSubtle)
-                            Text("\(l10n.phraseCount) 词条")
-                                .font(.system(size: 12).monospacedDigit())
-                                .foregroundStyle(theme.inkMuted)
-                            if l10n.customRuleCount > 0 {
-                                Text("·").foregroundStyle(theme.inkSubtle)
-                                Text("\(l10n.customRuleCount) 自定义")
-                                    .font(.system(size: 12).monospacedDigit())
-                                    .foregroundStyle(theme.inkSecondary)
-                            }
-                        }
-
-                        Spacer()
-
-                        if l10n?.patchInstalled == true {
-                            ToolButton(
-                                title: "卸载补丁",
-                                theme: theme,
-                                style: .danger,
-                                isDisabled: store.isRelaunchingAntigravity || store.isRebuildingL10n
-                            ) {
-                                store.uninstallDirectPatchAsync()
-                            }
-
-                            ToolButton(
-                                title: store.isRebuildingL10n ? "同步中..." : "同步词库",
-                                theme: theme,
-                                style: .secondary,
-                                isDisabled: store.isRebuildingL10n || store.isRelaunchingAntigravity
-                            ) {
-                                store.rebuildL10nOverlayAsync()
-                            }
-
-                            ToolButton(
-                                title: store.isRelaunchingAntigravity ? "重启中..." : "重启 Antigravity",
-                                theme: theme,
-                                style: .primary,
-                                isDisabled: store.isRelaunchingAntigravity || store.isRebuildingL10n
-                            ) {
-                                store.restartAntigravityNormallyAsync()
-                            }
-                        } else {
-                            ToolButton(
-                                title: store.isRebuildingL10n ? "同步中..." : "同步词库",
-                                theme: theme,
-                                style: .secondary,
-                                isDisabled: store.isRebuildingL10n || store.isRelaunchingAntigravity
-                            ) {
-                                store.rebuildL10nOverlayAsync()
-                            }
-
-                            ToolButton(
-                                title: store.isRelaunchingAntigravity ? "安装中..." : "安装中文补丁",
-                                theme: theme,
-                                style: .primary,
-                                isDisabled: store.isRelaunchingAntigravity || store.isRebuildingL10n
-                            ) {
-                                store.installDirectPatchAsync(andRestart: true)
-                            }
-                        }
-                    }
-                    .padding(.bottom, 14)
-
-                    HairlineDivider(theme: theme, axis: .horizontal)
-
-                    FlatSettingRow(
-                        title: "启用中文拓展",
-                        detail: l10n?.patchInstalled == true
-                            ? "已直接打补丁（\(l10n?.patchVersion ?? "v2")）· 正常启动永久生效，开关实时热切换"
-                            : "尚未安装直接补丁 · 开启将自动写入 app.asar 补丁（原版自动备份）",
-                        theme: theme
-                    ) {
-                        ToolSwitch(isOn: store.l10nEnabled, theme: theme) {
-                            store.toggleL10nEnabledAsync(!store.l10nEnabled)
-                        }
-                    }
-
-                    HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
-
-                    FlatSettingRow(
-                        title: "选项名保留英文",
-                        detail: "保留 Extra High / High / Medium / Low / Plan / Auto",
-                        theme: theme
-                    ) {
-                        ToolSwitch(isOn: store.l10nKeepEnglishOptions, theme: theme) {
-                            store.updatePreferences(l10nKeepEnglishOptions: !store.l10nKeepEnglishOptions)
-                        }
-                    }
-
-                    HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
-
-                    FlatSettingRow(
-                        title: "自定义词条与覆盖脚本",
-                        detail: l10n?.overlayReady == true ? "已构建就绪" : "点击同步生成本地脚本",
-                        theme: theme
-                    ) {
-                        HStack(spacing: 8) {
-                            ToolButton(
-                                title: "编辑自定义词条",
-                                theme: theme,
-                                style: .secondary
-                            ) {
-                                store.openCustomTranslationsFile()
-                            }
-                            ToolButton(
-                                title: "复制脚本路径",
-                                theme: theme,
-                                style: .secondary
-                            ) {
-                                store.copyL10nOverlayPath()
-                            }
-                        }
-                    }
-
-                    if let l10n {
-                        HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
-                        HStack(spacing: 8) {
-                            Text("脚本路径")
-                                .font(.system(size: 11.5))
-                                .foregroundStyle(theme.inkMuted)
-                            Text(abbreviateHome(l10n.overlayPath))
-                                .font(.system(size: 11.5, design: .monospaced))
-                                .foregroundStyle(theme.inkSecondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Spacer()
-                            if !l10n.bundleShaShort.isEmpty {
-                                Text(l10n.bundleShaShort)
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundStyle(theme.inkSubtle)
-                            }
-                        }
-                        .padding(.vertical, 11)
-                    }
-
-                    HairlineDivider(theme: theme, axis: .horizontal)
-                }
-                .padding(.bottom, 28)
-
-                // Section 4: Built-in Auto-Updater (GitHub Releases + SHA-256 + In-Place Inode Replace)
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .center, spacing: 10) {
-                        Text("软件更新")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(theme.inkPrimary)
-
-                        Text("v\(AppUpdateManager.currentVersion)")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(theme.inkMuted)
-
-                        Text("·").foregroundStyle(theme.inkSubtle)
-
-                        Text(updater.statusSummaryText)
-                            .font(.system(size: 12))
-                            .foregroundStyle({
-                                if case .error = updater.state { return theme.alertRed }
-                                if case .available = updater.state { return theme.inkPrimary }
-                                return theme.inkMuted
-                            }())
-                            .lineLimit(1)
-
-                        Spacer()
-
-                        if case .downloading = updater.state {
-                            ToolButton(title: "取消下载", theme: theme, style: .danger) {
-                                updater.cancelDownload()
-                            }
-                        } else if let release = updater.availableRelease {
-                            ToolButton(title: "查看发布页", theme: theme, style: .secondary) {
-                                updater.openReleasesPage()
-                            }
-                            ToolButton(
-                                title: updater.isBusy ? "更新中..." : "下载并安装 v\(release.version)",
-                                theme: theme,
-                                style: .primary,
-                                isDisabled: updater.isBusy
-                            ) {
-                                updater.startDownloadAndInstall(release)
-                            }
-                        } else {
-                            ToolButton(title: "发布页", theme: theme, style: .secondary) {
-                                updater.openReleasesPage()
-                            }
-                            ToolButton(
-                                title: updater.isBusy ? "检查中..." : "检查更新",
-                                theme: theme,
-                                style: .primary,
-                                isDisabled: updater.isBusy
-                            ) {
-                                Task {
-                                    await updater.checkForUpdates(manual: true)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.bottom, 14)
-
-                    if case .downloading(_, let progress, _, _) = updater.state {
-                        ToolProgressBar(
-                            progress: progress,
-                            fillColor: theme.barNeutral,
-                            theme: theme,
-                            height: 3
-                        )
-                        .padding(.bottom, 12)
-                    }
-
-                    HairlineDivider(theme: theme, axis: .horizontal)
-
-                    FlatSettingRow(
-                        title: "启动时自动检查更新",
-                        detail: "优先校验 SHA-256 并原位替换，保留程序坞图标位置",
-                        theme: theme
-                    ) {
-                        ToolSwitch(isOn: updater.autoCheckEnabled, theme: theme) {
-                            updater.autoCheckEnabled.toggle()
-                        }
-                    }
-
-                    HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
-
-                    FlatSettingRow(
-                        title: "更新通道",
-                        detail: "正式版 / 预览版（GitHub Releases）",
-                        theme: theme
-                    ) {
-                        HStack(spacing: 2) {
-                            SegmentOption(
-                                title: "正式版",
-                                isActive: updater.updateChannel == .stable,
-                                theme: theme
-                            ) {
-                                updater.updateChannel = .stable
-                            }
-                            SegmentOption(
-                                title: "预览版",
-                                isActive: updater.updateChannel == .prerelease,
-                                theme: theme
-                            ) {
-                                updater.updateChannel = .prerelease
-                            }
-                        }
-                        .padding(2)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(theme.bgSidebar)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(theme.borderControl, lineWidth: 1)
-                        )
-                    }
-
-                    HairlineDivider(theme: theme, axis: .horizontal)
-                }
+                .padding(.horizontal, 36)
+                .padding(.vertical, 28)
+                .frame(maxWidth: 880, alignment: .leading)
             }
-            .padding(.horizontal, 36)
-            .padding(.vertical, 28)
-            .frame(maxWidth: 980, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(theme.bgCanvas)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.bgCanvas)
+    }
+}
+
+// MARK: - Left Settings Rail (#101012)
+
+private struct SettingsDomainRail: View {
+    @ObservedObject var store: AppStore
+    @ObservedObject var updater: AppUpdateManager
+    let theme: MonochromeTheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(SettingsSection.allCases) { section in
+                SettingsRailItem(
+                    section: section,
+                    isSelected: store.activeSettingsSection == section,
+                    trailingText: trailingLabel(for: section),
+                    showAccentDot: shouldHighlightDot(for: section),
+                    theme: theme
+                ) {
+                    store.activeSettingsSection = section
+                }
+            }
+
+            Spacer()
+
+            HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
+                .padding(.vertical, 10)
+
+            HStack {
+                Text(STCopy.appName)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(theme.inkSubtle)
+                Spacer()
+                Text("v\(AppUpdateManager.currentVersion)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(theme.inkSubtle)
+            }
+            .padding(.horizontal, 8)
+            .padding(.bottom, 6)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 12)
+        .frame(width: 200)
+        .frame(maxHeight: .infinity)
+        .background(theme.bgSidebar)
     }
 
-    private func abbreviateHome(_ path: String) -> String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        if path.hasPrefix(home) {
-            return "~" + path.dropFirst(home.count)
+    private func trailingLabel(for section: SettingsSection) -> String? {
+        switch section {
+        case .accounts:
+            let count = store.snapshot?.accounts.count ?? 0
+            return count > 0 ? "\(count)" : nil
+        case .display:
+            return nil
+        case .l10n:
+            guard let l10n = store.l10nStatus else { return nil }
+            return l10n.patchInstalled ? STCopy.State.patched : STCopy.State.unpatched
+        case .updates:
+            if let rel = updater.availableRelease {
+                return "v\(rel.version)"
+            }
+            return "v\(AppUpdateManager.currentVersion)"
         }
-        return path
+    }
+
+    private func shouldHighlightDot(for section: SettingsSection) -> Bool {
+        switch section {
+        case .updates:
+            return updater.availableRelease != nil
+        default:
+            return false
+        }
+    }
+}
+
+private struct SettingsRailItem: View {
+    let section: SettingsSection
+    let isSelected: Bool
+    let trailingText: String?
+    let showAccentDot: Bool
+    let theme: MonochromeTheme
+    let action: () -> Void
+
+    @StateObject private var hover = HoverState()
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: section.iconName)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(isSelected ? theme.inkPrimary : theme.inkMuted)
+                    .frame(width: 16)
+
+                Text(section.title)
+                    .font(.system(size: 12.5, weight: isSelected ? .medium : .regular))
+                    .foregroundStyle(isSelected ? theme.inkPrimary : (hover.isHovered ? theme.inkPrimary : theme.inkSecondary))
+
+                Spacer(minLength: 4)
+
+                if showAccentDot {
+                    Circle()
+                        .fill(theme.alertAmber)
+                        .frame(width: 5.5, height: 5.5)
+                }
+
+                if let trailingText {
+                    Text(trailingText)
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(isSelected ? theme.inkSecondary : theme.inkSubtle)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(isSelected ? theme.bgSelected : (hover.isHovered ? theme.bgHover : Color.clear))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(isSelected ? theme.borderControl : Color.clear, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover.isHovered = $0 }
+    }
+}
+
+// MARK: - Domain 1: Accounts & Quota Archive
+
+private struct AccountsDomainPane: View {
+    @ObservedObject var store: AppStore
+    let theme: MonochromeTheme
+
+    var body: some View {
+        let accounts = store.snapshot?.accounts ?? []
+
+        VStack(alignment: .leading, spacing: 0) {
+            STSectionHeader(
+                title: STCopy.Accounts.title,
+                meta: "\(accounts.count)",
+                theme: theme
+            ) {
+                if store.inactiveAccountCount > 0 {
+                    ToolButton(title: STCopy.Action.clearInactive, theme: theme, style: .danger) {
+                        store.runAccountAction("clear_inactive")
+                    }
+                }
+                ToolButton(
+                    title: store.isSyncingQuota ? STCopy.State.syncing : STCopy.Action.refreshAccounts,
+                    theme: theme,
+                    style: .primary,
+                    isDisabled: store.isSyncingQuota
+                ) {
+                    store.refreshLiveQuotaAsync(silent: false)
+                }
+            }
+
+            HairlineDivider(theme: theme, axis: .horizontal)
+
+            if accounts.isEmpty {
+                Text(STCopy.Accounts.empty)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(theme.inkMuted)
+                    .padding(.vertical, 24)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(accounts.enumerated()), id: \.element.id) { idx, acc in
+                        if idx > 0 {
+                            HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
+                        }
+                        FlatAccountRow(
+                            account: acc,
+                            hideNonGemini: store.hideNonGeminiModels,
+                            theme: theme,
+                            onRemoveCache: {
+                                store.runAccountAction("remove_cached", email: acc.email)
+                            }
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -466,7 +240,7 @@ private struct FlatAccountRow: View {
                     .foregroundStyle(theme.inkPrimary)
 
                 if account.isActive {
-                    Text("当前")
+                    Text(STCopy.State.current)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(theme.inkSecondary)
                 }
@@ -489,19 +263,13 @@ private struct FlatAccountRow: View {
                 Spacer()
 
                 if !account.isActive {
-                    ToolButton(
-                        title: "移除缓存",
-                        theme: theme,
-                        style: .danger,
-                        action: onRemoveCache
-                    )
+                    ToolButton(title: STCopy.Action.removeCache, theme: theme, style: .danger, action: onRemoveCache)
                 }
             }
 
             if let q = account.cachedQuota {
                 let groups = hideNonGemini ? q.groups.filter { $0.isGemini } : q.groups
                 if !groups.isEmpty {
-                    // Single flat layer (6px radius, whisper border, zero nested cards)
                     HStack(alignment: .top, spacing: 0) {
                         ForEach(Array(groups.enumerated()), id: \.element.id) { idx, g in
                             if idx > 0 {
@@ -514,7 +282,7 @@ private struct FlatAccountRow: View {
 
                                 ForEach(g.buckets) { b in
                                     HStack(spacing: 10) {
-                                        Text(b.window == "weekly" ? "周" : (b.window == "5h" ? "5h" : b.window))
+                                        Text(b.window == "weekly" ? STCopy.Accounts.weeklyShort : (b.window == "5h" ? STCopy.Sidebar.fiveHourWindow : b.window))
                                             .font(.system(size: 11).monospacedDigit())
                                             .foregroundStyle(theme.inkSubtle)
                                             .frame(width: 20, alignment: .leading)
@@ -555,51 +323,350 @@ private struct FlatAccountRow: View {
     }
 }
 
-private struct FlatSettingRow<Control: View>: View {
-    let title: String
-    let detail: String
+// MARK: - Domain 2: Display & Archive Preferences
+
+private struct DisplayDomainPane: View {
+    @ObservedObject var store: AppStore
     let theme: MonochromeTheme
-    @ViewBuilder let control: Control
 
     var body: some View {
-        HStack(spacing: 16) {
-            HStack(spacing: 10) {
-                Text(title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(theme.inkPrimary)
-                Text(detail)
-                    .font(.system(size: 12))
-                    .foregroundStyle(theme.inkMuted)
+        VStack(alignment: .leading, spacing: 0) {
+            STSectionHeader(title: STCopy.Display.title, theme: theme) {
+                EmptyView()
             }
-            Spacer()
-            control
+
+            HairlineDivider(theme: theme, axis: .horizontal)
+
+            STSettingRow(
+                title: STCopy.Display.hideNonGemini,
+                spec: STCopy.Display.hideNonGeminiSpec,
+                theme: theme
+            ) {
+                ToolSwitch(isOn: store.hideNonGeminiModels, theme: theme) {
+                    store.updatePreferences(hideNonGeminiModels: !store.hideNonGeminiModels)
+                }
+            }
+
+            HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
+
+            STSettingRow(
+                title: STCopy.Display.menuBarQuota,
+                spec: STCopy.Display.menuBarQuotaSpec,
+                theme: theme
+            ) {
+                ToolSwitch(isOn: store.showMenuBarQuota, theme: theme) {
+                    store.updatePreferences(showMenuBarQuota: !store.showMenuBarQuota)
+                }
+            }
+
+            HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
+
+            STSettingRow(
+                title: STCopy.Display.showArchived,
+                spec: STCopy.Display.showArchivedSpec,
+                theme: theme
+            ) {
+                ToolSwitch(isOn: store.showArchivedSessions, theme: theme) {
+                    store.updatePreferences(showArchivedSessions: !store.showArchivedSessions)
+                }
+            }
+
+            HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
+
+            STSettingRow(
+                title: STCopy.Display.theme,
+                spec: STCopy.Display.themeSpec,
+                theme: theme
+            ) {
+                STSegmentControl(
+                    options: [
+                        (STCopy.Display.dark, AppThemeMode.dark),
+                        (STCopy.Display.light, AppThemeMode.light)
+                    ],
+                    selection: store.themeMode,
+                    theme: theme
+                ) { mode in
+                    store.setThemeMode(mode)
+                }
+            }
+
+            HairlineDivider(theme: theme, axis: .horizontal)
         }
-        .padding(.vertical, 14)
     }
 }
 
-private struct SegmentOption: View {
-    let title: String
-    let isActive: Bool
+// MARK: - Domain 3: STE-STC Chinese Localization & Direct ASAR Patch
+
+private struct L10nDomainPane: View {
+    @ObservedObject var store: AppStore
     let theme: MonochromeTheme
-    let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11.5, weight: isActive ? .medium : .regular))
-                .foregroundStyle(isActive ? theme.inkPrimary : theme.inkMuted)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(isActive ? theme.bgSelected : Color.clear)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .strokeBorder(isActive ? theme.borderControl : Color.clear, lineWidth: 1)
-                )
+        let l10n = store.l10nStatus
+        let metaText: String = {
+            guard let l10n else { return "STE-STC" }
+            return "\(l10n.standard) · Antigravity \(l10n.antigravityVersion) · \(l10n.phraseCount) 词条"
+        }()
+
+        VStack(alignment: .leading, spacing: 0) {
+            STSectionHeader(title: STCopy.L10n.title, meta: metaText, theme: theme) {
+                if l10n?.patchInstalled == true {
+                    ToolButton(
+                        title: STCopy.Action.uninstallPatch,
+                        theme: theme,
+                        style: .danger,
+                        isDisabled: store.isRelaunchingAntigravity || store.isRebuildingL10n
+                    ) {
+                        store.uninstallDirectPatchAsync()
+                    }
+                    ToolButton(
+                        title: store.isRebuildingL10n ? STCopy.State.syncing : STCopy.Action.syncDict,
+                        theme: theme,
+                        style: .secondary,
+                        isDisabled: store.isRebuildingL10n || store.isRelaunchingAntigravity
+                    ) {
+                        store.rebuildL10nOverlayAsync()
+                    }
+                    ToolButton(
+                        title: store.isRelaunchingAntigravity ? STCopy.State.restarting : STCopy.Action.restartApp,
+                        theme: theme,
+                        style: .primary,
+                        isDisabled: store.isRelaunchingAntigravity || store.isRebuildingL10n
+                    ) {
+                        store.restartAntigravityNormallyAsync()
+                    }
+                } else {
+                    ToolButton(
+                        title: store.isRebuildingL10n ? STCopy.State.syncing : STCopy.Action.syncDict,
+                        theme: theme,
+                        style: .secondary,
+                        isDisabled: store.isRebuildingL10n || store.isRelaunchingAntigravity
+                    ) {
+                        store.rebuildL10nOverlayAsync()
+                    }
+                    ToolButton(
+                        title: store.isRelaunchingAntigravity ? STCopy.State.installing : STCopy.Action.installPatch,
+                        theme: theme,
+                        style: .primary,
+                        isDisabled: store.isRelaunchingAntigravity || store.isRebuildingL10n
+                    ) {
+                        store.installDirectPatchAsync(andRestart: true)
+                    }
+                }
+            }
+
+            HairlineDivider(theme: theme, axis: .horizontal)
+
+            STSettingRow(
+                title: STCopy.L10n.enable,
+                spec: l10n?.patchInstalled == true ? "热切换" : "app.asar 直接补丁",
+                theme: theme
+            ) {
+                ToolSwitch(isOn: store.l10nEnabled, theme: theme) {
+                    store.toggleL10nEnabledAsync(!store.l10nEnabled)
+                }
+            }
+
+            HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
+
+            STSettingRow(
+                title: STCopy.L10n.keepEnglishOptions,
+                spec: STCopy.L10n.keepEnglishOptionsSpec,
+                theme: theme
+            ) {
+                ToolSwitch(isOn: store.l10nKeepEnglishOptions, theme: theme) {
+                    store.updatePreferences(l10nKeepEnglishOptions: !store.l10nKeepEnglishOptions)
+                }
+            }
+
+            HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
+
+            STSettingRow(
+                title: STCopy.L10n.customOverlay,
+                spec: l10n?.overlayReady == true ? STCopy.State.ready : STCopy.State.unbuilt,
+                theme: theme
+            ) {
+                HStack(spacing: 8) {
+                    ToolButton(title: STCopy.Action.editCustomTerms, theme: theme, style: .secondary) {
+                        store.openCustomTranslationsFile()
+                    }
+                    ToolButton(title: STCopy.Action.copyPath, theme: theme, style: .secondary) {
+                        store.copyL10nOverlayPath()
+                    }
+                }
+            }
+
+            if let l10n {
+                HairlineDivider(theme: theme, axis: .horizontal)
+                    .padding(.vertical, 18)
+
+                HStack(alignment: .top, spacing: 44) {
+                    VStack(spacing: 0) {
+                        STInspectorRow(
+                            key: STCopy.L10n.patchStatus,
+                            value: l10n.patchInstalled
+                                ? "\(STCopy.State.patched) (\(l10n.patchVersion.isEmpty ? "v2" : l10n.patchVersion))"
+                                : STCopy.State.unpatched,
+                            theme: theme
+                        )
+                        STInspectorRow(
+                            key: STCopy.L10n.targetVersion,
+                            value: "Antigravity \(l10n.antigravityVersion)",
+                            theme: theme
+                        )
+                        STInspectorRow(
+                            key: STCopy.L10n.backupStatus,
+                            value: l10n.backupExists ? STCopy.L10n.backupReady : STCopy.L10n.backupNone,
+                            isLast: true,
+                            theme: theme
+                        )
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    VStack(spacing: 0) {
+                        STInspectorRow(
+                            key: STCopy.L10n.dictScale,
+                            value: "\(l10n.phraseCount) + \(l10n.customRuleCount) 自定义",
+                            theme: theme
+                        )
+                        STInspectorRow(
+                            key: STCopy.L10n.scriptPath,
+                            value: STCopy.abbreviateHome(l10n.overlayPath),
+                            monospace: true,
+                            theme: theme
+                        )
+                        STInspectorRow(
+                            key: "SHA-256",
+                            value: l10n.bundleShaShort.isEmpty ? "--" : l10n.bundleShaShort,
+                            monospace: true,
+                            isLast: true,
+                            theme: theme
+                        )
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
         }
-        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Domain 4: Built-in Auto-Updater
+
+private struct UpdatesDomainPane: View {
+    @ObservedObject var updater: AppUpdateManager
+    let theme: MonochromeTheme
+
+    var body: some View {
+        let metaColor: Color = {
+            if case .error = updater.state { return theme.alertRed }
+            if case .available = updater.state { return theme.inkPrimary }
+            return theme.inkMuted
+        }()
+
+        VStack(alignment: .leading, spacing: 0) {
+            STSectionHeader(
+                title: STCopy.Updates.title,
+                meta: updater.statusSummaryText,
+                metaColor: metaColor,
+                theme: theme
+            ) {
+                if case .downloading = updater.state {
+                    ToolButton(title: STCopy.Action.cancelDownload, theme: theme, style: .danger) {
+                        updater.cancelDownload()
+                    }
+                } else if let release = updater.availableRelease {
+                    ToolButton(title: STCopy.Action.openReleases, theme: theme, style: .secondary) {
+                        updater.openReleasesPage()
+                    }
+                    ToolButton(
+                        title: updater.isBusy ? STCopy.State.updating : "安装 v\(release.version)",
+                        theme: theme,
+                        style: .primary,
+                        isDisabled: updater.isBusy
+                    ) {
+                        updater.startDownloadAndInstall(release)
+                    }
+                } else {
+                    ToolButton(title: STCopy.Action.openReleases, theme: theme, style: .secondary) {
+                        updater.openReleasesPage()
+                    }
+                    ToolButton(
+                        title: updater.isBusy ? STCopy.State.checking : STCopy.Action.checkUpdates,
+                        theme: theme,
+                        style: .primary,
+                        isDisabled: updater.isBusy
+                    ) {
+                        Task {
+                            await updater.checkForUpdates(manual: true)
+                        }
+                    }
+                }
+            }
+
+            if case .downloading(_, let progress, _, _) = updater.state {
+                ToolProgressBar(
+                    progress: progress,
+                    fillColor: theme.barNeutral,
+                    theme: theme,
+                    height: 3
+                )
+                .padding(.bottom, 12)
+            }
+
+            HairlineDivider(theme: theme, axis: .horizontal)
+
+            STSettingRow(
+                title: STCopy.Updates.autoCheck,
+                spec: STCopy.Updates.autoCheckSpec,
+                theme: theme
+            ) {
+                ToolSwitch(isOn: updater.autoCheckEnabled, theme: theme) {
+                    updater.autoCheckEnabled.toggle()
+                }
+            }
+
+            HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
+
+            STSettingRow(
+                title: STCopy.Updates.channel,
+                spec: STCopy.Updates.channelSpec,
+                theme: theme
+            ) {
+                STSegmentControl(
+                    options: [
+                        (AppUpdateChannel.stable.displayTitle, AppUpdateChannel.stable),
+                        (AppUpdateChannel.prerelease.displayTitle, AppUpdateChannel.prerelease)
+                    ],
+                    selection: updater.updateChannel,
+                    theme: theme
+                ) { ch in
+                    updater.updateChannel = ch
+                }
+            }
+
+            HairlineDivider(theme: theme, axis: .horizontal)
+                .padding(.vertical, 18)
+
+            VStack(spacing: 0) {
+                STInspectorRow(
+                    key: STCopy.Updates.currentVersion,
+                    value: "v\(AppUpdateManager.currentVersion)",
+                    monospace: true,
+                    theme: theme
+                )
+                STInspectorRow(
+                    key: STCopy.Updates.verifyPolicy,
+                    value: STCopy.Updates.verifyPolicyValue,
+                    theme: theme
+                )
+                STInspectorRow(
+                    key: STCopy.Updates.repository,
+                    value: AppUpdateManager.githubRepo,
+                    monospace: true,
+                    isLast: true,
+                    theme: theme
+                )
+            }
+        }
     }
 }

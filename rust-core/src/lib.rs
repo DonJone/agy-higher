@@ -190,17 +190,17 @@ impl CoreEngine {
         if let Some(hide) = req.hide_non_gemini_models {
             prefs.hide_non_gemini_models = hide;
             msg = if hide {
-                "已屏蔽非 Gemini 模型额度分组".to_string()
+                "已隐藏非 Gemini 模型".to_string()
             } else {
-                "已显示全部模型额度分组（含 Claude / GPT）".to_string()
+                "已显示全部模型（含 Claude / GPT）".to_string()
             };
         }
         if let Some(show_mb) = req.show_menu_bar_quota {
             prefs.show_menu_bar_quota = show_mb;
             msg = if show_mb {
-                "已在 macOS 顶部菜单栏开启额度显示".to_string()
+                "已开启状态栏额度".to_string()
             } else {
-                "已隐藏 macOS 菜单栏额度图标".to_string()
+                "已隐藏状态栏额度".to_string()
             };
         }
         if let Some(theme) = req.theme_mode {
@@ -211,9 +211,9 @@ impl CoreEngine {
             };
             prefs.theme_mode = norm;
             msg = if prefs.theme_mode == "light" {
-                "已切换至浅色单色主题".to_string()
+                "已切换浅色主题".to_string()
             } else {
-                "已切换至深色单色主题".to_string()
+                "已切换深色主题".to_string()
             };
         }
         if let Some(show_archived) = req.show_archived_sessions {
@@ -222,9 +222,9 @@ impl CoreEngine {
             }
             prefs.show_archived_sessions = show_archived;
             msg = if show_archived {
-                "已显示归档历史会话".to_string()
+                "已显示归档会话".to_string()
             } else {
-                "已隐藏归档历史会话".to_string()
+                "已隐藏归档会话".to_string()
             };
         }
         let mut l10n_turned_on = false;

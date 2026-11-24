@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Main Content Area (#161618) — 100% dedicated to the currently selected item:
-/// - Session selected -> Linear/Raycast style Session Inspector (4 borderless KPIs + 6px context bar + 2-column KV Inspector)
-/// - Project folder selected -> Project Folder Overview listing all sessions inside that folder
+/// Main Content Canvas (#161618) — 100% focused on the active selection:
+/// - Session selected -> STE-STC Session Inspector (4 borderless KPIs + 6px context bar + 2-column KV Inspector)
+/// - Project selected -> Project Overview listing all sessions inside that project
 struct TelemetryDashboardView: View {
     @ObservedObject var store: AppStore
 
@@ -26,7 +26,7 @@ struct TelemetryDashboardView: View {
             } else {
                 VStack {
                     Spacer()
-                    Text("选择左侧项目或会话")
+                    Text(STCopy.Inspector.emptySelection)
                         .font(.system(size: 13))
                         .foregroundStyle(theme.inkMuted)
                     Spacer()
@@ -39,7 +39,7 @@ struct TelemetryDashboardView: View {
     }
 }
 
-// MARK: - View A: Session Inspector (100% Focused on Selected Session)
+// MARK: - View A: STE-STC Session Inspector
 
 private struct SessionInspectorView: View {
     let session: SessionTelemetry
@@ -93,7 +93,7 @@ private struct SessionInspectorView: View {
                 Spacer()
 
                 ToolButton(
-                    title: "复制 ID",
+                    title: STCopy.Action.copyId,
                     theme: theme,
                     style: .secondary,
                     action: onCopyId
@@ -101,36 +101,36 @@ private struct SessionInspectorView: View {
             }
             .padding(.bottom, 30)
 
-            // Layer 1: 4 Borderless Hero KPI Numbers separated purely by whitespace (ZERO lines, ZERO boxes)
+            // Layer 1: 4 Borderless Hero KPI Numbers
             HStack(alignment: .top, spacing: 0) {
-                HeroMetricColumn(
-                    label: "上下文占用",
+                STMetricColumn(
+                    label: STCopy.Inspector.contextUsage,
                     value: "\(session.ctxPct)%",
                     valueColor: occTextColor,
-                    sub: "\(formatCompactTokens(session.ctxUsedTokens)) / \(formatCompactTokens(session.ctxLimitTokens))",
+                    sub: "\(STCopy.tokens(session.ctxUsedTokens)) / \(STCopy.tokens(session.ctxLimitTokens))",
                     theme: theme
                 )
-                HeroMetricColumn(
-                    label: "累计输入",
-                    value: formatCompactTokens(session.totalInputTokens),
+                STMetricColumn(
+                    label: STCopy.Inspector.totalInput,
+                    value: STCopy.tokens(session.totalInputTokens),
                     valueColor: theme.inkPrimary,
-                    sub: "缓存读取 \(formatCompactTokens(session.totalCacheReadTokens))",
+                    sub: "\(STCopy.Inspector.cache) \(STCopy.tokens(session.totalCacheReadTokens))",
                     theme: theme
                 )
-                HeroMetricColumn(
-                    label: "缓存命中",
+                STMetricColumn(
+                    label: STCopy.Inspector.cacheHit,
                     value: "\(session.cacheHitPct)%",
                     valueColor: theme.inkPrimary,
-                    sub: "输出 \(formatCompactTokens(session.totalOutputTokens))",
+                    sub: "\(STCopy.Inspector.output) \(STCopy.tokens(session.totalOutputTokens))",
                     theme: theme
                 )
-                HeroMetricColumn(
-                    label: "估算费用",
+                STMetricColumn(
+                    label: STCopy.Inspector.estimatedCost,
                     value: String(format: "$%.2f", session.costUsd),
                     valueColor: theme.inkPrimary,
                     sub: session.totalThinkingTokens > 0
-                        ? "思考 \(formatCompactTokens(session.totalThinkingTokens))"
-                        : "按公开费率",
+                        ? "思考 \(STCopy.tokens(session.totalThinkingTokens))"
+                        : STCopy.Inspector.referenceRate,
                     theme: theme
                 )
             }
@@ -146,12 +146,12 @@ private struct SessionInspectorView: View {
                 )
 
                 HStack(spacing: 18) {
-                    LegendDatum(color: barColor, label: "规则 \(session.breakdown.rulesK)k", theme: theme)
-                    LegendDatum(color: barColor.opacity(0.62), label: "缓存 \(session.breakdown.cacheK)k", theme: theme)
-                    LegendDatum(color: barColor.opacity(0.36), label: "新增 \(session.breakdown.freshInputK)k", theme: theme)
-                    LegendDatum(color: barColor.opacity(0.18), label: "输出 \(session.breakdown.outputK)k", theme: theme)
+                    LegendDatum(color: barColor, label: "\(STCopy.Inspector.rules) \(session.breakdown.rulesK)k", theme: theme)
+                    LegendDatum(color: barColor.opacity(0.62), label: "\(STCopy.Inspector.cache) \(session.breakdown.cacheK)k", theme: theme)
+                    LegendDatum(color: barColor.opacity(0.36), label: "\(STCopy.Inspector.freshInput) \(session.breakdown.freshInputK)k", theme: theme)
+                    LegendDatum(color: barColor.opacity(0.18), label: "\(STCopy.Inspector.output) \(session.breakdown.outputK)k", theme: theme)
                     Spacer()
-                    Text("剩余 \(session.breakdown.freeK)k")
+                    Text("\(STCopy.Inspector.remaining) \(session.breakdown.freeK)k")
                         .font(.system(size: 11.5, weight: .medium).monospacedDigit())
                         .foregroundStyle(session.ctxPct > 80 ? theme.alertRed : theme.inkMuted)
                 }
@@ -161,27 +161,27 @@ private struct SessionInspectorView: View {
             HairlineDivider(theme: theme, axis: .horizontal)
                 .padding(.bottom, 22)
 
-            // Layer 3: macOS "显示简介 / Inspector" Two-Column Key-Value Detail List
-            Text("遥测明细")
+            // Layer 3: macOS Inspector Two-Column Canonical Key-Value List
+            Text(STCopy.Inspector.telemetrySection)
                 .font(.system(size: 11.5, weight: .semibold))
                 .foregroundStyle(theme.inkMuted)
                 .padding(.bottom, 12)
 
             HStack(alignment: .top, spacing: 48) {
                 VStack(spacing: 0) {
-                    InspectorKVRow(key: "当前模型", value: session.model, theme: theme)
-                    InspectorKVRow(key: "步数 / LLM 轮次", value: "\(session.stepCount) / \(session.llmTurns)", theme: theme)
-                    InspectorKVRow(key: "提问 / 回复", value: "\(session.userTurns) / \(session.assistantTurns)", theme: theme)
-                    InspectorKVRow(key: "工具调用 / 压缩", value: "\(session.toolCallCount) / \(session.checkpointCount)", theme: theme)
-                    InspectorKVRow(key: "子 Agent", value: "\(session.subagentCount)", theme: theme)
-                    InspectorKVRow(
-                        key: "标签",
-                        value: session.tags.isEmpty ? "无" : session.tags.joined(separator: ", "),
+                    STInspectorRow(key: STCopy.Inspector.currentModel, value: session.model, theme: theme)
+                    STInspectorRow(key: STCopy.Inspector.stepsAndTurns, value: "\(session.stepCount) / \(session.llmTurns)", theme: theme)
+                    STInspectorRow(key: STCopy.Inspector.userAndAssistant, value: "\(session.userTurns) / \(session.assistantTurns)", theme: theme)
+                    STInspectorRow(key: STCopy.Inspector.toolsAndCheckpoints, value: "\(session.toolCallCount) / \(session.checkpointCount)", theme: theme)
+                    STInspectorRow(key: STCopy.Inspector.subagents, value: "\(session.subagentCount)", theme: theme)
+                    STInspectorRow(
+                        key: STCopy.Inspector.tags,
+                        value: session.tags.isEmpty ? STCopy.State.none : session.tags.joined(separator: ", "),
                         theme: theme
                     )
-                    InspectorKVRow(
-                        key: "会话状态",
-                        value: session.isArchived ? "\(session.status) · 已归档" : session.status,
+                    STInspectorRow(
+                        key: STCopy.Inspector.sessionStatus,
+                        value: session.isArchived ? "\(session.status) · \(STCopy.State.archivedFull)" : session.status,
                         isLast: true,
                         theme: theme
                     )
@@ -189,36 +189,37 @@ private struct SessionInspectorView: View {
                 .frame(maxWidth: .infinity)
 
                 VStack(spacing: 0) {
-                    InspectorKVRow(
-                        key: "高频工具",
+                    STInspectorRow(
+                        key: STCopy.Inspector.topTools,
                         value: session.topTools.isEmpty
-                            ? "无"
+                            ? STCopy.State.none
                             : session.topTools.prefix(3).map { "\($0.name) ×\($0.count)" }.joined(separator: "  "),
                         theme: theme
                     )
-                    InspectorKVRow(
-                        key: "已用模型",
+                    STInspectorRow(
+                        key: STCopy.Inspector.modelsUsed,
                         value: session.modelsUsed.isEmpty ? session.model : session.modelsUsed.prefix(2).joined(separator: ", "),
                         theme: theme
                     )
-                    InspectorKVRow(
-                        key: "产出文件",
-                        value: session.artifactFiles.isEmpty ? "无" : session.artifactFiles.prefix(3).joined(separator: ", "),
+                    STInspectorRow(
+                        key: STCopy.Inspector.artifacts,
+                        value: session.artifactFiles.isEmpty ? STCopy.State.none : session.artifactFiles.prefix(3).joined(separator: ", "),
                         theme: theme
                     )
-                    InspectorKVRow(
-                        key: "规则文件",
-                        value: session.workspaceRuleFiles.isEmpty ? "无" : session.workspaceRuleFiles.joined(separator: ", "),
+                    STInspectorRow(
+                        key: STCopy.Inspector.ruleFiles,
+                        value: session.workspaceRuleFiles.isEmpty ? STCopy.State.none : session.workspaceRuleFiles.joined(separator: ", "),
                         theme: theme
                     )
-                    InspectorKVRow(
-                        key: "思考 Token",
-                        value: formatCompactTokens(session.totalThinkingTokens),
+                    STInspectorRow(
+                        key: STCopy.Inspector.thinkingTokens,
+                        value: STCopy.tokens(session.totalThinkingTokens),
                         theme: theme
                     )
-                    InspectorKVRow(
-                        key: "数据源",
-                        value: telemetryOriginShort(session.telemetryOrigin),
+                    STInspectorRow(
+                        key: STCopy.Inspector.dataSource,
+                        value: STCopy.telemetryOrigin(session.telemetryOrigin),
+                        monospace: true,
                         isLast: true,
                         theme: theme
                     )
@@ -226,13 +227,12 @@ private struct SessionInspectorView: View {
                 .frame(maxWidth: .infinity)
             }
 
-            // Recent Prompt Strip
             if !session.lastUserPrompt.isEmpty {
                 HairlineDivider(theme: theme, axis: .horizontal)
                     .padding(.vertical, 20)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("最近输入")
+                    Text(STCopy.Inspector.recentPrompt)
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(theme.inkMuted)
                     Text(session.lastUserPrompt)
@@ -247,17 +247,9 @@ private struct SessionInspectorView: View {
         .padding(.vertical, 28)
         .frame(maxWidth: 1020, alignment: .leading)
     }
-
-    private func telemetryOriginShort(_ origin: String) -> String {
-        switch origin {
-        case "db+gen_metadata": return "gen_metadata"
-        case "db-steps": return "steps"
-        default: return "summary"
-        }
-    }
 }
 
-// MARK: - View B: Project Folder Overview (Shows All Sessions in Selected Folder)
+// MARK: - View B: Project Overview
 
 private struct ProjectFolderOverviewView: View {
     let project: NativeProject
@@ -274,7 +266,6 @@ private struct ProjectFolderOverviewView: View {
         let totalTokens = sessions.reduce(UInt64(0)) { $0 + $1.totalInputTokens + $1.totalCacheReadTokens + $1.totalOutputTokens }
 
         VStack(alignment: .leading, spacing: 0) {
-            // Folder header
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Image(systemName: "folder")
@@ -288,11 +279,11 @@ private struct ProjectFolderOverviewView: View {
 
                 HStack(spacing: 8) {
                     if let folder = project.folderPath, !folder.isEmpty {
-                        Text(abbreviateHome(folder))
+                        Text(STCopy.abbreviateHome(folder))
                             .foregroundStyle(theme.inkMuted)
                         Text("·").foregroundStyle(theme.inkSubtle)
                     }
-                    Text("\(sessions.count) 个会话")
+                    Text("\(sessions.count) 会话")
                         .foregroundStyle(theme.inkSecondary)
                         .monospacedDigit()
                     if !project.lastModified.isEmpty {
@@ -306,34 +297,33 @@ private struct ProjectFolderOverviewView: View {
             }
             .padding(.bottom, 28)
 
-            // 4 Borderless Aggregate KPI Numbers
             HStack(alignment: .top, spacing: 0) {
-                HeroMetricColumn(
-                    label: "会话总数",
+                STMetricColumn(
+                    label: STCopy.Folder.totalSessions,
                     value: "\(sessions.count)",
                     valueColor: theme.inkPrimary,
-                    sub: activeCount > 0 ? "\(activeCount) 活跃" : "全部空闲",
+                    sub: activeCount > 0 ? "\(activeCount) \(STCopy.State.active)" : STCopy.Folder.allIdle,
                     theme: theme
                 )
-                HeroMetricColumn(
-                    label: "最高上下文",
+                STMetricColumn(
+                    label: STCopy.Folder.peakContext,
                     value: maxCtxSession.map { "\($0.ctxPct)%" } ?? "--",
                     valueColor: maxCtxSession.map { theme.occupancyTextColor(ctxPct: $0.ctxPct) } ?? theme.inkMuted,
-                    sub: maxCtxSession.map { "\($0.ctxUsedK)k / \($0.ctxTotalK)k" } ?? "无数据",
+                    sub: maxCtxSession.map { "\($0.ctxUsedK)k / \($0.ctxTotalK)k" } ?? STCopy.Folder.noData,
                     theme: theme
                 )
-                HeroMetricColumn(
-                    label: "累计步数",
+                STMetricColumn(
+                    label: STCopy.Folder.totalSteps,
                     value: NumberFormatter.localizedString(from: NSNumber(value: totalSteps), number: .decimal),
                     valueColor: theme.inkPrimary,
-                    sub: "\(totalTurns) LLM 轮次",
+                    sub: "\(totalTurns) 轮次",
                     theme: theme
                 )
-                HeroMetricColumn(
-                    label: "合计估算",
+                STMetricColumn(
+                    label: STCopy.Folder.totalCost,
                     value: String(format: "$%.2f", totalCost),
                     valueColor: theme.inkPrimary,
-                    sub: "总吞吐 \(formatCompactTokens(totalTokens))",
+                    sub: "吞吐 \(STCopy.tokens(totalTokens))",
                     theme: theme
                 )
             }
@@ -342,25 +332,24 @@ private struct ProjectFolderOverviewView: View {
             HairlineDivider(theme: theme, axis: .horizontal)
                 .padding(.bottom, 18)
 
-            // Sessions table inside this folder
             HStack {
-                Text("文件夹下会话")
+                Text(STCopy.Folder.tableTitle)
                     .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(theme.inkMuted)
                 Spacer()
-                Text("上下文")
+                Text(STCopy.Folder.colContext)
                     .font(.system(size: 11))
                     .foregroundStyle(theme.inkSubtle)
                     .frame(width: 132, alignment: .trailing)
-                Text("步数")
+                Text(STCopy.Folder.colSteps)
                     .font(.system(size: 11))
                     .foregroundStyle(theme.inkSubtle)
                     .frame(width: 60, alignment: .trailing)
-                Text("估算")
+                Text(STCopy.Folder.colCost)
                     .font(.system(size: 11))
                     .foregroundStyle(theme.inkSubtle)
                     .frame(width: 64, alignment: .trailing)
-                Text("更新时间")
+                Text(STCopy.Folder.colUpdated)
                     .font(.system(size: 11))
                     .foregroundStyle(theme.inkSubtle)
                     .frame(width: 108, alignment: .trailing)
@@ -370,7 +359,7 @@ private struct ProjectFolderOverviewView: View {
             .padding(.bottom, 8)
 
             if sessions.isEmpty {
-                Text("该项目文件夹下暂无会话")
+                Text(STCopy.Folder.empty)
                     .font(.system(size: 12.5))
                     .foregroundStyle(theme.inkMuted)
                     .padding(.horizontal, 10)
@@ -391,14 +380,6 @@ private struct ProjectFolderOverviewView: View {
         .padding(.horizontal, 36)
         .padding(.vertical, 28)
         .frame(maxWidth: 1020, alignment: .leading)
-    }
-
-    private func abbreviateHome(_ path: String) -> String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        if path.hasPrefix(home) {
-            return "~" + path.dropFirst(home.count)
-        }
-        return path
     }
 }
 
@@ -433,7 +414,7 @@ private struct FolderSessionTableRow: View {
                                 .foregroundStyle(theme.inkSubtle)
                         }
                         if session.isArchived {
-                            Text("已归档")
+                            Text(STCopy.State.archivedFull)
                                 .font(.system(size: 10))
                                 .foregroundStyle(theme.inkSubtle)
                         }
@@ -459,7 +440,6 @@ private struct FolderSessionTableRow: View {
 
                 Spacer(minLength: 12)
 
-                // Context bar + tabular %
                 HStack(spacing: 8) {
                     ToolProgressBar(
                         progress: Double(session.ctxPct) / 100.0,
@@ -509,62 +489,6 @@ private struct FolderSessionTableRow: View {
     }
 }
 
-// MARK: - Subcomponents
-
-private struct HeroMetricColumn: View {
-    let label: String
-    let value: String
-    let valueColor: Color
-    let sub: String
-    let theme: MonochromeTheme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(.system(size: 11.5, weight: .medium))
-                .foregroundStyle(theme.inkMuted)
-            Text(value)
-                .font(.system(size: 28, weight: .semibold).monospacedDigit())
-                .tracking(-0.6)
-                .foregroundStyle(valueColor)
-                .lineLimit(1)
-            Text(sub)
-                .font(.system(size: 11.5).monospacedDigit())
-                .foregroundStyle(theme.inkMuted)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct InspectorKVRow: View {
-    let key: String
-    let value: String
-    var isLast: Bool = false
-    let theme: MonochromeTheme
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(key)
-                    .font(.system(size: 12))
-                    .foregroundStyle(theme.inkMuted)
-                Spacer(minLength: 12)
-                Text(value)
-                    .font(.system(size: 12, weight: .medium).monospacedDigit())
-                    .foregroundStyle(theme.inkPrimary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .padding(.vertical, 9.5)
-
-            if !isLast {
-                HairlineDivider(theme: theme, axis: .horizontal, subtle: true)
-            }
-        }
-    }
-}
-
 private struct ContextCompositionBar: View {
     let breakdown: ContextBreakdown
     let totalK: UInt32
@@ -584,18 +508,10 @@ private struct ContextCompositionBar: View {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(theme.trackBg)
                 HStack(spacing: 1) {
-                    if wRules > 0.5 {
-                        Rectangle().fill(accent).frame(width: wRules)
-                    }
-                    if wCache > 0.5 {
-                        Rectangle().fill(accent.opacity(0.62)).frame(width: wCache)
-                    }
-                    if wFresh > 0.5 {
-                        Rectangle().fill(accent.opacity(0.36)).frame(width: wFresh)
-                    }
-                    if wOut > 0.5 {
-                        Rectangle().fill(accent.opacity(0.18)).frame(width: wOut)
-                    }
+                    if wRules > 0.5 { Rectangle().fill(accent).frame(width: wRules) }
+                    if wCache > 0.5 { Rectangle().fill(accent.opacity(0.62)).frame(width: wCache) }
+                    if wFresh > 0.5 { Rectangle().fill(accent.opacity(0.36)).frame(width: wFresh) }
+                    if wOut > 0.5 { Rectangle().fill(accent.opacity(0.18)).frame(width: wOut) }
                     Spacer(minLength: 0)
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
@@ -620,13 +536,4 @@ private struct LegendDatum: View {
                 .foregroundStyle(theme.inkMuted)
         }
     }
-}
-
-func formatCompactTokens(_ count: UInt64) -> String {
-    if count >= 1_000_000 {
-        return String(format: "%.2fM", Double(count) / 1_000_000.0)
-    } else if count >= 1_000 {
-        return String(format: "%.1fk", Double(count) / 1_000.0)
-    }
-    return "\(count)"
 }

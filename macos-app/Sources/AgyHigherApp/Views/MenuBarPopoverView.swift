@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Restrained carbon-gray menu bar popover (quiet neutral when healthy, amber/crimson only on alert).
+/// Restrained carbon-gray menu bar popover (canonical STE-STC copy & quiet neutral telemetry).
 struct MenuBarPopoverView: View {
     @ObservedObject var store: AppStore
     @Environment(\.openWindow) private var openWindow
@@ -19,7 +19,7 @@ struct MenuBarPopoverView: View {
                     .fill(theme.activeDotColor(isActive: !activeEmail.isEmpty))
                     .frame(width: 5.5, height: 5.5)
 
-                Text(activeEmail.isEmpty ? "同步中..." : activeEmail)
+                Text(activeEmail.isEmpty ? STCopy.State.syncing : activeEmail)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.inkPrimary)
                     .lineLimit(1)
@@ -52,7 +52,7 @@ struct MenuBarPopoverView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 if store.visibleQuotaGroups.isEmpty {
-                    Text("暂无额度数据")
+                    Text(STCopy.MenuBar.noQuota)
                         .font(.system(size: 11.5))
                         .foregroundStyle(theme.inkMuted)
                 } else {
@@ -65,7 +65,7 @@ struct MenuBarPopoverView: View {
                             ForEach(group.buckets) { bucket in
                                 VStack(alignment: .leading, spacing: 3.5) {
                                     HStack {
-                                        Text(bucket.window == "weekly" ? "周" : (bucket.window == "5h" ? "5h" : bucket.name))
+                                        Text(bucket.window == "weekly" ? STCopy.Accounts.weeklyShort : (bucket.window == "5h" ? STCopy.Sidebar.fiveHourWindow : bucket.name))
                                             .font(.system(size: 11))
                                             .foregroundStyle(theme.inkMuted)
                                         Spacer()
@@ -100,7 +100,7 @@ struct MenuBarPopoverView: View {
                         Circle()
                             .fill(theme.activeDotColor(isActive: session.isLiveActive))
                             .frame(width: 5, height: 5)
-                        Text(session.isLiveActive ? "当前活跃上下文" : "最近会话上下文")
+                        Text(session.isLiveActive ? STCopy.MenuBar.activeContext : STCopy.MenuBar.recentContext)
                             .font(.system(size: 10.5, weight: .medium))
                             .foregroundStyle(theme.inkMuted)
                         Spacer()
@@ -118,7 +118,7 @@ struct MenuBarPopoverView: View {
                         theme: theme,
                         height: 3
                     )
-                    Text("\(formatCompactTokens(session.ctxUsedTokens)) / \(formatCompactTokens(session.ctxLimitTokens)) · \(session.model)")
+                    Text("\(STCopy.tokens(session.ctxUsedTokens)) / \(STCopy.tokens(session.ctxLimitTokens)) · \(session.model)")
                         .font(.system(size: 10.5).monospacedDigit())
                         .foregroundStyle(theme.inkMuted)
                         .lineLimit(1)
@@ -162,7 +162,7 @@ struct MenuBarPopoverView: View {
 
             HStack(spacing: 8) {
                 ToolButton(
-                    title: store.isSyncingQuota ? "同步中..." : "刷新额度",
+                    title: store.isSyncingQuota ? STCopy.State.syncing : STCopy.Action.refreshQuota,
                     theme: theme,
                     style: .secondary,
                     isDisabled: store.isSyncingQuota
@@ -171,7 +171,7 @@ struct MenuBarPopoverView: View {
                 }
 
                 ToolButton(
-                    title: "打开主面板",
+                    title: STCopy.Action.openMainWindow,
                     theme: theme,
                     style: .primary
                 ) {
@@ -181,7 +181,7 @@ struct MenuBarPopoverView: View {
                 Spacer()
 
                 ToolButton(
-                    title: "退出",
+                    title: STCopy.Action.quit,
                     theme: theme,
                     style: .ghost
                 ) {

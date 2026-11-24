@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Left sidebar (#101012) containing:
-/// 1. Project & Session tree (clicking a project selects it to inspect all its sessions; empty folders collapse by default)
-/// 2. Bottom-left compact Usage dock (Claude / Cursor style: two 3px bars for Weekly & 5h quota)
+/// Left sidebar (#101012):
+/// 1. Project & Session tree (empty folders collapse by default)
+/// 2. Bottom-left compact Usage Dock (two 3px bars for Weekly & 5h quota)
 struct ProjectSessionListView: View {
     @ObservedObject var store: AppStore
 
@@ -10,17 +10,16 @@ struct ProjectSessionListView: View {
         let theme = store.theme
 
         VStack(spacing: 0) {
-            // Compact search + refresh header
             HStack(spacing: 6) {
                 ToolSearchField(
-                    placeholder: "筛选项目或会话",
+                    placeholder: STCopy.Sidebar.searchPlaceholder,
                     text: $store.searchQuery,
                     theme: theme
                 )
 
                 SidebarIconButton(
                     systemName: "arrow.clockwise",
-                    help: "刷新会话",
+                    help: STCopy.Action.refreshSessions,
                     isDisabled: store.isRefreshingSessions,
                     theme: theme
                 ) {
@@ -31,11 +30,10 @@ struct ProjectSessionListView: View {
             .padding(.top, 10)
             .padding(.bottom, 8)
 
-            // Project & session tree
             if store.visibleProjects.isEmpty {
                 VStack {
                     Spacer()
-                    Text(store.searchQuery.isEmpty ? "暂无项目" : "无匹配结果")
+                    Text(store.searchQuery.isEmpty ? STCopy.Sidebar.emptyProjects : STCopy.Sidebar.emptyMatches)
                         .font(.system(size: 12))
                         .foregroundStyle(theme.inkMuted)
                     Spacer()
@@ -66,7 +64,6 @@ struct ProjectSessionListView: View {
                 }
             }
 
-            // Bottom-left compact Usage Dock (Cursor / Claude style — 3px neutral/alert bars)
             HairlineDivider(theme: theme, axis: .horizontal)
             SidebarQuotaDock(store: store, theme: theme)
         }
@@ -91,7 +88,7 @@ private struct SidebarQuotaDock: View {
 
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Text("额度")
+                Text(STCopy.Sidebar.quotaTitle)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(theme.inkSecondary)
 
@@ -106,7 +103,7 @@ private struct SidebarQuotaDock: View {
 
                 SidebarIconButton(
                     systemName: "arrow.clockwise",
-                    help: "刷新额度",
+                    help: STCopy.Action.refreshQuota,
                     isDisabled: store.isSyncingQuota,
                     theme: theme
                 ) {
@@ -115,7 +112,7 @@ private struct SidebarQuotaDock: View {
             }
 
             if weekly == nil && fiveH == nil {
-                Text(quota?.error ?? (store.isSyncingQuota ? "正在同步..." : "点击刷新同步额度"))
+                Text(quota?.error ?? (store.isSyncingQuota ? STCopy.State.syncing : STCopy.Sidebar.noQuotaPrompt))
                     .font(.system(size: 11))
                     .foregroundStyle(quota?.error != nil ? theme.alertRed : theme.inkMuted)
                     .lineLimit(1)
@@ -123,7 +120,7 @@ private struct SidebarQuotaDock: View {
                 VStack(alignment: .leading, spacing: 7) {
                     if let w = weekly {
                         CompactQuotaLine(
-                            label: "周剩余",
+                            label: STCopy.Sidebar.weeklyRemaining,
                             pct: w.remainingPct,
                             fraction: w.remainingFraction,
                             theme: theme
@@ -131,7 +128,7 @@ private struct SidebarQuotaDock: View {
                     }
                     if let h5 = fiveH {
                         CompactQuotaLine(
-                            label: "5h",
+                            label: STCopy.Sidebar.fiveHourWindow,
                             pct: h5.remainingPct,
                             fraction: h5.remainingFraction,
                             theme: theme
@@ -147,8 +144,8 @@ private struct SidebarQuotaDock: View {
                         .foregroundStyle(theme.inkSubtle)
                         .lineLimit(1)
                     Spacer()
-                    Button("明细") {
-                        store.activeTab = .accounts
+                    Button(STCopy.Action.details) {
+                        store.openSettings(.accounts)
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 10.5, weight: .medium))
@@ -236,7 +233,6 @@ private struct ProjectSectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 2) {
-                // Chevron explicitly toggles collapse/expand
                 Button(action: onToggleCollapse) {
                     Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                         .font(.system(size: 8.5, weight: .semibold))
@@ -246,7 +242,6 @@ private struct ProjectSectionView: View {
                 }
                 .buttonStyle(.plain)
 
-                // Folder title row selects the project to show all sessions in the main view
                 Button(action: onSelectProject) {
                     HStack(spacing: 6) {
                         Image(systemName: "folder")
@@ -287,7 +282,7 @@ private struct ProjectSectionView: View {
 
             if !isCollapsed {
                 if sessions.isEmpty {
-                    Text("暂无会话")
+                    Text(STCopy.Sidebar.emptySessions)
                         .font(.system(size: 11))
                         .foregroundStyle(theme.inkSubtle)
                         .padding(.leading, 26)
@@ -333,7 +328,7 @@ private struct SessionRowView: View {
                     Spacer(minLength: 4)
 
                     if session.isArchived {
-                        Text("归档")
+                        Text(STCopy.State.archived)
                             .font(.system(size: 9.5))
                             .foregroundStyle(theme.inkSubtle)
                     }
@@ -350,7 +345,7 @@ private struct SessionRowView: View {
                 }
 
                 HStack(spacing: 6) {
-                    Text(shortModelLabel(session.model))
+                    Text(STCopy.shortModel(session.model))
                         .font(.system(size: 10.5))
                         .foregroundStyle(isSelected ? theme.inkMuted : theme.inkSubtle)
                         .lineLimit(1)
@@ -389,13 +384,5 @@ private struct SessionRowView: View {
         .buttonStyle(.plain)
         .onHover { hover.isHovered = $0 }
         .padding(.leading, 12)
-    }
-
-    private func shortModelLabel(_ raw: String) -> String {
-        raw.replacingOccurrences(of: "Gemini ", with: "G")
-            .replacingOccurrences(of: " (XHigh)", with: " XH")
-            .replacingOccurrences(of: " (High)", with: " H")
-            .replacingOccurrences(of: " (Medium)", with: " M")
-            .replacingOccurrences(of: " (Low)", with: " L")
     }
 }

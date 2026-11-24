@@ -7,6 +7,33 @@ enum MainViewTab: String {
     case accounts
 }
 
+enum SettingsSection: String, CaseIterable, Identifiable {
+    case accounts
+    case display
+    case l10n
+    case updates
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .accounts: return STCopy.SettingsNav.accounts
+        case .display: return STCopy.SettingsNav.display
+        case .l10n: return STCopy.SettingsNav.l10n
+        case .updates: return STCopy.SettingsNav.updates
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .accounts: return "person.crop.circle"
+        case .display: return "slider.horizontal.3"
+        case .l10n: return "character.book.closed"
+        case .updates: return "arrow.down.circle"
+        }
+    }
+}
+
 enum SidebarSelection: Equatable {
     case session(String)
     case project(String)
@@ -16,6 +43,7 @@ enum SidebarSelection: Equatable {
 final class AppStore: ObservableObject {
     @Published var themeMode: AppThemeMode = .dark
     @Published var activeTab: MainViewTab = .dashboard
+    @Published var activeSettingsSection: SettingsSection = .accounts
     @Published var snapshot: DashboardSnapshot?
     @Published var selection: SidebarSelection?
     @Published var collapsedProjectIds: Set<String> = []
@@ -552,10 +580,15 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func openSettings(_ section: SettingsSection) {
+        activeSettingsSection = section
+        activeTab = .accounts
+    }
+
     func installDirectPatchAsync(andRestart: Bool = false) {
         guard !isRelaunchingAntigravity && !isRebuildingL10n else { return }
         isRelaunchingAntigravity = true
-        showToast(andRestart ? "正在安装直接补丁并重启 Antigravity..." : "正在安装 Antigravity 中文补丁...")
+        showToast(andRestart ? "安装补丁并重启 Antigravity..." : "安装补丁...")
         let localBridge = bridge
         Task.detached(priority: .userInitiated) {
             do {
@@ -565,7 +598,7 @@ final class AppStore: ObservableObject {
                     guard let self else { return }
                     self.isRelaunchingAntigravity = false
                     self.applySnapshot(finalRes.snapshot, resetSelection: false)
-                    self.showToast(andRestart ? "直接补丁已安装并正常重启 Antigravity" : res.message)
+                    self.showToast(andRestart ? "补丁已安装，已重启 Antigravity" : res.message)
                 }
             } catch {
                 await MainActor.run { [weak self] in
@@ -603,7 +636,7 @@ final class AppStore: ObservableObject {
     func restartAntigravityNormallyAsync() {
         guard !isRelaunchingAntigravity else { return }
         isRelaunchingAntigravity = true
-        showToast("正在正常重启 Antigravity...")
+        showToast("重启 Antigravity...")
         let localBridge = bridge
         Task.detached(priority: .userInitiated) {
             do {
