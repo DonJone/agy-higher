@@ -21,13 +21,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_ASAR_PATH = '/Applications/Antigravity.app/Contents/Resources/app.asar';
 export const DEFAULT_BACKUP_DIR = path.join(os.homedir(), '.config', 'agy-higher', 'backups');
 export const PATCH_MARKER_START = '// === AGY_HIGHER_STC_PATCH_START ===';
 export const PATCH_MARKER_END = '// === AGY_HIGHER_STC_PATCH_END ===';
-export const PATCH_SCHEMA_VERSION = 'v2-main-watch';
+export const PATCH_SCHEMA_VERSION = 'v2.1-main-watch';
 
 const MAIN_HOOK_SNIPPET = `
 ${PATCH_MARKER_START}
@@ -67,7 +68,7 @@ ${PATCH_MARKER_START}
         if (!_fs.existsSync(_ovPath)) return;
         const code = _fs.readFileSync(_ovPath, 'utf8');
         wc.executeJavaScript(
-          "try{window.localStorage.setItem('agy_higher_stc_enabled','1')}catch(_){}\n" + code
+          "try{window.localStorage.setItem('agy_higher_stc_enabled','1')}catch(_){};\\n" + code
         ).catch(() => {});
       } catch (_) {}
     };
@@ -271,7 +272,10 @@ export function installAsarPatch(asarPath, backupDir, version = '2.35.0') {
     base.payload.subarray(baseOffset, baseOffset + baseEntry.size).toString('utf8')
   );
 
-  const patchedMainBuf = Buffer.from(baseMain.trimEnd() + '\n' + MAIN_HOOK_SNIPPET, 'utf8');
+  const patchedMainStr = baseMain.trimEnd() + '\n' + MAIN_HOOK_SNIPPET;
+  // Mandatory syntax guard: compile patched dist/main.js before writing app.asar
+  new vm.Script(patchedMainStr, { filename: 'dist/main.js' });
+  const patchedMainBuf = Buffer.from(patchedMainStr, 'utf8');
   const newOffset = base.payload.length;
   baseEntry.offset = String(newOffset);
   baseEntry.size = patchedMainBuf.length;

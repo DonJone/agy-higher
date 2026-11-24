@@ -1,7 +1,7 @@
 import Foundation
 
 enum AgyHigherAppInfo {
-    static let fallbackVersion = "0.2.2"
+    static let fallbackVersion = "0.2.3"
     static var version: String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? fallbackVersion
     }

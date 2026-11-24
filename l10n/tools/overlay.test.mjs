@@ -96,7 +96,7 @@ test('live v2.35.0 greeting and plan dynamic patterns translate cleanly', () => 
   assert.equal(translate('Your plan: Google AI Ultra'), '当前套餐: Google AI Ultra');
 });
 
-test('ASAR direct patch install and uninstall roundtrip is byte-exact', () => {
+test('ASAR direct patch install and uninstall roundtrip is byte-exact', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-asar-test-'));
   try {
     const asarPath = path.join(tmp, 'app.asar');
@@ -129,6 +129,15 @@ test('ASAR direct patch install and uninstall roundtrip is byte-exact', () => {
     const ins = installAsarPatch(asarPath, backupDir, '2.35.0');
     assert.equal(ins.patched, true);
     assert.equal(inspectAsarPatchStatus(asarPath, backupDir, '2.35.0').patched, true);
+    // Re-parse patched dist/main.js and verify zero syntax errors
+    const vm = await import('node:vm');
+    const { parseAsar } = await import('./asar-patch.mjs');
+    const patchedParsed = parseAsar(asarPath);
+    const mainEntry = patchedParsed.tree.files.dist.files['main.js'];
+    const mainSrc = patchedParsed.payload
+      .subarray(Number(mainEntry.offset), Number(mainEntry.offset) + mainEntry.size)
+      .toString('utf8');
+    assert.doesNotThrow(() => new vm.Script(mainSrc, { filename: 'dist/main.js' }));
 
     const un = uninstallAsarPatch(asarPath, backupDir, '2.35.0');
     assert.equal(un.patched, false);
