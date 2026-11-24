@@ -1,0 +1,18 @@
+# Build & packaging outputs
+/build/
+/dist/
+/rust-core/target/
+/macos-app/.build/
+/macos-app/.swiftpm/
+
+# Local development sandboxes, pasted screenshots & scratch drafts
+/.dev-sandbox/
+/design-drafts/
+/prototype/
+/已粘贴*.png
+/scripts/copy-donby-to-antigravity.py
+/scripts/organize-antigravity.py
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db

@@ -1,0 +1,144 @@
+name: Build macOS DMG
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "自定义版本号（留空则自动读取 Tag 或默认版本）"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-dmg-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+
+jobs:
+  preflight:
+    name: Check if macOS CI build is needed
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.decide.outputs.should_build }}
+    steps:
+      - name: Decide build necessity
+        id: decide
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+            VER="${TAG#v}"
+            ASSETS_JSON="$(gh release view "$TAG" --repo "${{ github.repository }}" --json assets --jq '[.assets[].name]' 2>/dev/null || echo '[]')"
+            if echo "$ASSETS_JSON" | grep -q "AgyHigher-${VER}-macOS-arm64.dmg" && \
+               echo "$ASSETS_JSON" | grep -q "AgyHigher-${VER}-macOS-arm64.app.zip" && \
+               echo "$ASSETS_JSON" | grep -q "latest.json" && \
+               echo "$ASSETS_JSON" | grep -q "SHA256SUMS.txt"; then
+              echo "Release ${TAG} already contains all local macOS build artifacts. Skipping cloud macOS build."
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          MSG="$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}" --jq '.commit.message' 2>/dev/null || true)"
+          if echo "$MSG" | grep -qE '\[(local-release|skip dmg)\]'; then
+            echo "Local-release marker found on commit. Skipping redundant cloud macOS build."
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "should_build=true" >> "$GITHUB_OUTPUT"
+
+  build-macos-dmg:
+    name: Build & Package DMG (macOS arm64)
+    needs: preflight
+    if: needs.preflight.outputs.should_build == 'true'
+    runs-on: macos-15
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify STE-STC l10n bundle & Rust tests
+        run: |
+          node l10n/tools/build-overlay.mjs --check
+          node l10n/tools/lint-l10n.mjs
+          node --test l10n/tools/overlay.test.mjs
+          cargo test --manifest-path rust-core/Cargo.toml
+
+      - name: Resolve build version
+        id: meta
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VER="${{ inputs.version }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            BASE_VER="$(sed -n 's/^APP_VERSION="\${AGY_HIGHER_VERSION:-\(.*\)}"$/\1/p' scripts/build.sh | head -n 1)"
+            VER="${BASE_VER:-0.2.0}-${GITHUB_SHA::7}"
+          fi
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "Resolved AgyHigher version: ${VER}"
+
+      - name: Package self-contained AgyHigher.app & DMG
+        env:
+          AGY_HIGHER_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          chmod +x scripts/build.sh scripts/package_dmg.sh
+          ./scripts/package_dmg.sh
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgyHigher-${{ steps.meta.outputs.version }}-macOS-arm64
+          path: |
+            dist/*.dmg
+            dist/*.app.zip
+            dist/latest.json
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release (on Tag push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.dmg
+            dist/*.app.zip
+            dist/latest.json
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          body: |
+            ### 安装说明 (macOS 14.0+ Apple Silicon)
+            1. 下载下方 `AgyHigher-*.dmg` 并双击挂载，将 `AgyHigher.app` 拖入 `Applications`（应用程序）。
+            2. 安装包已内嵌 Rust 核心库与 STE-STC 中文拓展词库，零外部依赖即可直接运行。
+            3. 由于开源构建采用本地 Ad-hoc 签名（未接入付费 Apple Developer 公证），首次打开如提示“无法验证开发者”或“已损坏”，请在终端执行一次：
+               ```bash
+               sudo xattr -rd com.apple.quarantine /Applications/AgyHigher.app
+               ```

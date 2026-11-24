@@ -1,0 +1,13 @@
+{
+  "version": "2.35.0",
+  "standard": "STE-STC (Simplified Technical English -> Simplified Technical Chinese)",
+  "phraseCount": 2557,
+  "customEntryCount": 0,
+  "keepEnglishOptionNames": true,
+  "domains": {
+    "chat-agent": 753,
+    "common": 1245,
+    "settings-quota": 559
+  },
+  "sha256": "27176d2d8883d97c4d72bcb5f3faf5ac912e28a12b7ce030ec6ce74db52adc56"
+}

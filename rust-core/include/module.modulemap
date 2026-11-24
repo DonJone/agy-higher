@@ -1,0 +1,4 @@
+module CAgyHigherCore {
+    header "agy_higher_core.h"
+    export *
+}
