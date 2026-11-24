@@ -480,6 +480,11 @@ fn seed_sandbox_antigravity(root: &Path) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
         let mut step_idx = 0i64;
+        for _ in 0..s.checkpoints {
+            cdb.execute("INSERT INTO steps (idx, step_type) VALUES (?1, 23)", [step_idx])
+                .map_err(|e| e.to_string())?;
+            step_idx += 1;
+        }
         for _ in 0..s.turns.min(8) {
             cdb.execute("INSERT INTO steps (idx, step_type) VALUES (?1, 14)", [step_idx])
                 .map_err(|e| e.to_string())?;
@@ -487,11 +492,6 @@ fn seed_sandbox_antigravity(root: &Path) -> Result<(), String> {
         }
         for _ in 0..s.turns {
             cdb.execute("INSERT INTO steps (idx, step_type) VALUES (?1, 15)", [step_idx])
-                .map_err(|e| e.to_string())?;
-            step_idx += 1;
-        }
-        for _ in 0..s.checkpoints {
-            cdb.execute("INSERT INTO steps (idx, step_type) VALUES (?1, 23)", [step_idx])
                 .map_err(|e| e.to_string())?;
             step_idx += 1;
         }

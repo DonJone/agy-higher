@@ -151,6 +151,8 @@ pub struct SessionTelemetry {
     pub top_tools: Vec<ToolUsageStat>,
     pub checkpoint_count: u32,
     pub subagent_count: u32,
+    #[serde(default)]
+    pub is_compacted_pending_turn: bool,
     pub telemetry_origin: String,
     pub created_at: String,
     pub last_modified: String,

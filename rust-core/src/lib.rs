@@ -991,4 +991,39 @@ I1123 15:40:35.743200 1 server_oauth.go:226] OAuth: authenticated successfully a
         assert!(rebuilt.snapshot.l10n.phrase_count > 100);
         assert!(engine.paths.l10n_overlay_path().is_file());
     }
+
+    #[test]
+    fn test_compaction_checkpoint_pending_turn_and_post_turn_recovery() {
+        use crate::scanner::parse_conv_db_telemetry;
+
+        let sb = fresh_test_sandbox("compact_state");
+        let db = sb.join("compact_session.db");
+        {
+            let conn = rusqlite::Connection::open(&db).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER NOT NULL, step_payload BLOB);
+                 CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB);",
+            )
+            .unwrap();
+            // Pre-compaction: high 492k context at planner step 10, followed by CHECKPOINT at step 11
+            conn.execute("INSERT INTO steps (idx, step_type, step_payload) VALUES (10, 15, zeroblob(100))", []).unwrap();
+            conn.execute("INSERT INTO steps (idx, step_type, step_payload) VALUES (11, 23, zeroblob(48000))", []).unwrap();
+            let hi_blob = build_sandbox_gen_metadata_pb(2_400, 800, 488_000, 300, 492_000, 512_000, "Gemini 4 Neon (XHigh)");
+            conn.execute("INSERT INTO gen_metadata (idx, data) VALUES (0, ?1)", rusqlite::params![hi_blob]).unwrap();
+        }
+        let tel_pending = parse_conv_db_telemetry(&db).unwrap();
+        assert!(tel_pending.is_compacted_pending_turn);
+        assert!(tel_pending.pending_compact_est_tokens < 65_000);
+
+        // Post-compaction next LLM turn commits at step 12 with fresh 31k context
+        {
+            let conn = rusqlite::Connection::open(&db).unwrap();
+            conn.execute("INSERT INTO steps (idx, step_type, step_payload) VALUES (12, 15, zeroblob(100))", []).unwrap();
+            let lo_blob = build_sandbox_gen_metadata_pb(24_000, 700, 0, 200, 31_000, 512_000, "Gemini 4 Neon (XHigh)");
+            conn.execute("INSERT INTO gen_metadata (idx, data) VALUES (1, ?1)", rusqlite::params![lo_blob]).unwrap();
+        }
+        let tel_calibrated = parse_conv_db_telemetry(&db).unwrap();
+        assert!(!tel_calibrated.is_compacted_pending_turn);
+        assert_eq!(tel_calibrated.ctx_used_tokens, 31_000);
+    }
 }

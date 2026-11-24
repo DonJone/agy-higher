@@ -154,6 +154,7 @@ private enum SnapshotRenderer {
                 toolCallCount: first.toolCallCount,
                 topTools: [ToolUsageStat(name: "read_file", count: 18), ToolUsageStat(name: "edit_file", count: 9)],
                 checkpointCount: first.checkpointCount, subagentCount: first.subagentCount,
+                isCompactedPendingTurn: false,
                 telemetryOrigin: first.telemetryOrigin,
                 createdAt: first.createdAt, lastModified: first.lastModified
             )

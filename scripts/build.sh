@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 RUST_DIR="$ROOT_DIR/rust-core"
 SWIFT_DIR="$ROOT_DIR/macos-app"
-APP_VERSION="${AGY_HIGHER_VERSION:-0.2.1}"
+APP_VERSION="${AGY_HIGHER_VERSION:-0.2.2}"
 BUILD_NUMBER="${AGY_HIGHER_BUILD_NUMBER:-$(date -u +%Y%m%d%H%M)}"
 APP_DIR="${AGY_HIGHER_APP_DIR:-$ROOT_DIR/build/AgyHigher.app}"
 BUILD_CONFIG="${AGY_HIGHER_BUILD_CONFIG:-release}"

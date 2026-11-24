@@ -65,6 +65,10 @@ pub struct NativeDbTelemetry {
     pub checkpoint_count: u32,
     pub total_steps_in_db: u32,
     pub has_gen_metadata: bool,
+    #[serde(default)]
+    pub is_compacted_pending_turn: bool,
+    #[serde(default)]
+    pub pending_compact_est_tokens: u64,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -129,7 +133,7 @@ struct PersistentTelemetryCache {
     tx_entries: HashMap<String, CachedTranscript>,
 }
 
-const TELEMETRY_CACHE_VERSION: u32 = 1;
+const TELEMETRY_CACHE_VERSION: u32 = 2;
 
 static TELEMETRY_CACHE_STORE: OnceLock<Mutex<HashMap<String, PersistentTelemetryCache>>> =
     OnceLock::new();
@@ -534,11 +538,24 @@ pub fn scan_antigravity_desktop(
                 if models.is_empty() {
                     models.push(model.clone());
                 }
-                let ctx_used = if dt.ctx_used_tokens > 0 {
-                    dt.ctx_used_tokens
-                } else {
-                    dt.last_input_tokens + dt.last_cache_read_tokens
-                };
+                let (ctx_used, last_in_eff, last_cache_eff, last_out_eff, origin) =
+                    if dt.is_compacted_pending_turn {
+                        let est = dt.pending_compact_est_tokens.max(18_000);
+                        (est, est.saturating_sub(12_000), 0u64, 0u64, "compacted-pending".to_string())
+                    } else {
+                        let used = if dt.ctx_used_tokens > 0 {
+                            dt.ctx_used_tokens
+                        } else {
+                            dt.last_input_tokens + dt.last_cache_read_tokens
+                        };
+                        (
+                            used,
+                            dt.last_input_tokens,
+                            dt.last_cache_read_tokens,
+                            dt.last_output_tokens,
+                            "db+gen_metadata".to_string(),
+                        )
+                    };
                 let ctx_limit = if dt.ctx_limit_tokens > 0 {
                     dt.ctx_limit_tokens
                 } else {
@@ -559,10 +576,10 @@ pub fn scan_antigravity_desktop(
                     dt.assistant_turns.max(dt.llm_turns),
                     tools,
                     dt.checkpoint_count.max(tx_tel.checkpoint_count),
-                    dt.last_input_tokens,
-                    dt.last_cache_read_tokens,
-                    dt.last_output_tokens,
-                    "db+gen_metadata".to_string(),
+                    last_in_eff,
+                    last_cache_eff,
+                    last_out_eff,
+                    origin,
                 )
             } else if tx_tel.has_data {
                 let model = if !tx_tel.model.is_empty() {
@@ -803,6 +820,10 @@ pub fn scan_antigravity_desktop(
             top_tools: tx_tel.top_tools,
             checkpoint_count,
             subagent_count: raw.subagent_count,
+            is_compacted_pending_turn: db_tel
+                .as_ref()
+                .map(|d| d.is_compacted_pending_turn)
+                .unwrap_or(false),
             telemetry_origin,
             created_at: tx_tel.created_at,
             last_modified: format_display_timestamp(&raw.last_modified),
@@ -1177,16 +1198,34 @@ pub fn parse_conv_db_telemetry(db_path: &Path) -> Option<NativeDbTelemetry> {
     let conn = open_sqlite_readonly(db_path).ok()?;
     let mut out = NativeDbTelemetry::default();
 
-    if let Ok(mut stmt) = conn.prepare("SELECT step_type, COUNT(*) FROM steps GROUP BY step_type") {
+    let mut max_planner_idx: i64 = -1;
+    let mut max_checkpoint_idx: i64 = -1;
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT step_type, COUNT(*), MAX(idx) FROM steps GROUP BY step_type")
+    {
         if let Ok(iter) = stmt.query_map([], |r| {
-            Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?.max(0) as u32))
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?.max(0) as u32,
+                r.get::<_, Option<i64>>(2)?.unwrap_or(-1),
+            ))
         }) {
-            for (st, cnt) in iter.flatten() {
+            for (st, cnt, max_idx) in iter.flatten() {
                 out.total_steps_in_db = out.total_steps_in_db.saturating_add(cnt);
                 match st {
                     14 => out.user_turns = out.user_turns.saturating_add(cnt),
-                    15 => out.assistant_turns = out.assistant_turns.saturating_add(cnt),
-                    23 => out.checkpoint_count = out.checkpoint_count.saturating_add(cnt),
+                    15 => {
+                        out.assistant_turns = out.assistant_turns.saturating_add(cnt);
+                        if max_idx > max_planner_idx {
+                            max_planner_idx = max_idx;
+                        }
+                    }
+                    23 => {
+                        out.checkpoint_count = out.checkpoint_count.saturating_add(cnt);
+                        if max_idx > max_checkpoint_idx {
+                            max_checkpoint_idx = max_idx;
+                        }
+                    }
                     5 | 6 | 7 | 8 | 9 | 13 | 21 | 25 | 31 | 33 | 38 | 47 | 51 | 52 | 60 | 73
                     | 86 | 87 | 92 | 127 | 132 | 136 | 138 | 140 => {
                         out.tool_call_count = out.tool_call_count.saturating_add(cnt);
@@ -1195,6 +1234,24 @@ pub fn parse_conv_db_telemetry(db_path: &Path) -> Option<NativeDbTelemetry> {
                 }
             }
         }
+    }
+
+    // Detect post-compaction state BEFORE next LLM turn has written a fresh gen_metadata row:
+    // If the latest CHECKPOINT (step_type = 23) occurred AFTER the latest PLANNER_RESPONSE (step_type = 15),
+    // the pre-compaction gen_metadata context is obsolete until the next turn commits.
+    if max_checkpoint_idx >= 0 && max_checkpoint_idx > max_planner_idx {
+        out.is_compacted_pending_turn = true;
+        let payload_bytes: u64 = conn
+            .query_row(
+                "SELECT COALESCE(LENGTH(step_payload), 0) FROM steps WHERE idx = ?1",
+                [max_checkpoint_idx],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0)
+            .max(0) as u64;
+        // System rules (~12k) + compressed checkpoint summary (~bytes / 3.5), clamped to realistic post-compact band
+        let summary_tok = (payload_bytes / 3).max(16_000).min(48_000);
+        out.pending_compact_est_tokens = 12_000 + summary_tok;
     }
 
     let mut seen_models: Vec<String> = Vec::new();

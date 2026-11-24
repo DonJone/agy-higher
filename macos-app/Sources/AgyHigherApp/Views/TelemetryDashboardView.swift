@@ -105,9 +105,11 @@ private struct SessionInspectorView: View {
             HStack(alignment: .top, spacing: 0) {
                 STMetricColumn(
                     label: STCopy.Inspector.contextUsage,
-                    value: "\(session.ctxPct)%",
+                    value: session.isCompactedPendingTurn ? "~\(session.ctxPct)%" : "\(session.ctxPct)%",
                     valueColor: occTextColor,
-                    sub: "\(STCopy.tokens(session.ctxUsedTokens)) / \(STCopy.tokens(session.ctxLimitTokens))",
+                    sub: session.isCompactedPendingTurn
+                        ? "已压缩 · 约 \(STCopy.tokens(session.ctxUsedTokens)) / \(STCopy.tokens(session.ctxLimitTokens))"
+                        : "\(STCopy.tokens(session.ctxUsedTokens)) / \(STCopy.tokens(session.ctxLimitTokens))",
                     theme: theme
                 )
                 STMetricColumn(

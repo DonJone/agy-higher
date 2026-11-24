@@ -77,10 +77,16 @@ final class AppStore: ObservableObject {
     private var userManuallyPickedSelection: Bool = false
     private var lastTrackedLiveSessionId: String?
     private var fsWatchers: [DispatchSourceFileSystemObject] = []
+    private var activeFileWatchers: [DispatchSourceFileSystemObject] = []
+    private var watchedFilePaths: Set<String> = []
+    private var isLiveWatchEnabled: Bool = false
     private var fsDebounceTask: Task<Void, Never>?
 
     deinit {
         for source in fsWatchers {
+            source.cancel()
+        }
+        for source in activeFileWatchers {
             source.cancel()
         }
     }
@@ -152,7 +158,9 @@ final class AppStore: ObservableObject {
         applySnapshot(snap, resetSelection: true)
 
         if !sandboxMode {
+            isLiveWatchEnabled = true
             startLiveAntigravityWatchers()
+            rebindActiveSessionFileWatchers(force: true)
         }
 
         if autoSyncLiveQuota && !sandboxMode && shouldAutoSyncQuota(snap.quota) {
@@ -160,8 +168,8 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// Zero-CPU macOS kqueue (`EVFILT_VNODE`) file-system watchers on Antigravity Desktop's
-    /// live conversations & presence directories so active context changes reflect immediately.
+    /// Zero-CPU macOS kqueue (`EVFILT_VNODE`) directory watchers on Antigravity Desktop's
+    /// conversations & presence folders (detects new sessions, lock acquisition, and new `-wal` files).
     private func startLiveAntigravityWatchers() {
         guard fsWatchers.isEmpty else { return }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -180,6 +188,7 @@ final class AppStore: ObservableObject {
             )
             src.setEventHandler { [weak self] in
                 Task { @MainActor [weak self] in
+                    self?.rebindActiveSessionFileWatchers(force: false)
                     self?.scheduleDebouncedLiveRefresh()
                 }
             }
@@ -191,10 +200,68 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// Precision file-level kqueue (`EVFILT_VNODE`) watchers bound directly to the active & selected
+    /// session's `.db`, `.db-wal`, and `.lock` files. Catches in-place WAL appends on every single LLM
+    /// turn or context compaction in <400ms with 0.0% idle CPU and zero polling, auto-rebinding whenever
+    /// Antigravity switches sessions or recreates/truncates `-wal`.
+    private func rebindActiveSessionFileWatchers(force: Bool) {
+        guard isLiveWatchEnabled else { return }
+        var targetIds = Set<String>()
+        if let liveId = liveActiveSession?.id { targetIds.insert(liveId) }
+        if let selId = selectedSessionId { targetIds.insert(selId) }
+
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let fm = FileManager.default
+        var desiredPaths = Set<String>()
+        for sid in targetIds {
+            let db = "\(home)/.gemini/antigravity/conversations/\(sid).db"
+            let wal = "\(db)-wal"
+            let lock = "\(home)/.gemini/antigravity/presence/\(sid).lock"
+            if fm.fileExists(atPath: db) { desiredPaths.insert(db) }
+            if fm.fileExists(atPath: wal) { desiredPaths.insert(wal) }
+            if fm.fileExists(atPath: lock) { desiredPaths.insert(lock) }
+        }
+
+        if !force && desiredPaths == watchedFilePaths {
+            return
+        }
+
+        for src in activeFileWatchers {
+            src.cancel()
+        }
+        activeFileWatchers.removeAll(keepingCapacity: true)
+        watchedFilePaths = desiredPaths
+
+        for path in desiredPaths {
+            let fd = open(path, O_EVTONLY)
+            guard fd >= 0 else { continue }
+            let src = DispatchSource.makeFileSystemObjectSource(
+                fileDescriptor: fd,
+                eventMask: [.write, .extend, .attrib, .rename, .delete],
+                queue: DispatchQueue.global(qos: .utility)
+            )
+            src.setEventHandler { [weak self, weak src] in
+                let flags = src?.data ?? []
+                let needsRebind = flags.contains(.delete) || flags.contains(.rename)
+                Task { @MainActor [weak self] in
+                    if needsRebind {
+                        self?.rebindActiveSessionFileWatchers(force: true)
+                    }
+                    self?.scheduleDebouncedLiveRefresh()
+                }
+            }
+            src.setCancelHandler {
+                close(fd)
+            }
+            src.resume()
+            activeFileWatchers.append(src)
+        }
+    }
+
     private func scheduleDebouncedLiveRefresh() {
         fsDebounceTask?.cancel()
         fsDebounceTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 350_000_000)
+            try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
             self?.refresh(showFeedback: false)
         }
@@ -254,6 +321,7 @@ final class AppStore: ObservableObject {
         userManuallyPickedSelection = true
         selection = .session(sessionId)
         activeTab = .dashboard
+        rebindActiveSessionFileWatchers(force: false)
         if let s = sessionsById[sessionId], s.telemetryOrigin == "summary-only" {
             let localBridge = bridge
             Task.detached(priority: .userInitiated) {
@@ -327,6 +395,9 @@ final class AppStore: ObservableObject {
     func applySnapshot(_ snap: DashboardSnapshot, resetSelection: Bool) {
         snapshot = snap
         rebuildAllIndexes(from: snap)
+        defer {
+            rebindActiveSessionFileWatchers(force: false)
+        }
 
         // Auto-follow whenever Antigravity Desktop switches to a new live active session!
         let currentLive = snap.sessions.first(where: { $0.isLiveActive })

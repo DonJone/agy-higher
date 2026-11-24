@@ -215,6 +215,7 @@ enum STCopy {
     static func telemetryOrigin(_ origin: String) -> String {
         switch origin {
         case "db+gen_metadata": return "gen_metadata"
+        case "compacted-pending": return "已压缩 (待下轮校准)"
         case "db-steps": return "steps"
         case "transcript.jsonl": return "transcript"
         default: return "summary"

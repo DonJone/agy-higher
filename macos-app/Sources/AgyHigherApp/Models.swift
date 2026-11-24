@@ -95,6 +95,7 @@ struct SessionTelemetry: Codable, Identifiable, Equatable {
     let topTools: [ToolUsageStat]
     let checkpointCount: UInt32
     let subagentCount: UInt32
+    let isCompactedPendingTurn: Bool
     let telemetryOrigin: String
     let createdAt: String
     let lastModified: String
